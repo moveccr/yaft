@@ -75,11 +75,13 @@ void tty_init(struct termios *save_tm)
 	vtm.mode   = VT_PROCESS;
 	vtm.waitv  = 0;
 	vtm.relsig = vtm.acqsig = vtm.frsig = SIGUSR1;
+#if 0 /* XXX: LUNA currently does not supoort these ioctls */
 	if (ioctl(STDIN_FILENO, VT_SETMODE, &vtm))
 		fatal("ioctl: VT_SETMODE failed (maybe here is not console)");
 
 	if (ioctl(STDIN_FILENO, KDSETMODE, KD_GRAPHICS))
 		fatal("ioctl: KDSETMODE failed (maybe here is not console)");
+#endif
 
 	etcgetattr(STDIN_FILENO, save_tm);
 	set_rawmode(STDIN_FILENO, save_tm);
@@ -100,8 +102,10 @@ void tty_die(struct termios *save_tm)
 	vtm.mode   = VT_AUTO;
 	vtm.waitv  = 0;
 	vtm.relsig = vtm.acqsig = vtm.frsig = 0;
+#if 0 /* XXX: LUNA currently does not supoort these ioctls */
 	ioctl(STDIN_FILENO, VT_SETMODE, &vtm);
 	ioctl(STDIN_FILENO, KDSETMODE, KD_TEXT);
+#endif
 
 	tcsetattr(STDIN_FILENO, TCSAFLUSH, save_tm);
 	fflush(stdout);

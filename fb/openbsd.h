@@ -15,9 +15,15 @@ typedef unsigned long   u_long;
 
 /* some structs for OpenBSD */
 enum term_size {
+#if 0
 	TERM_WIDTH  = 640,
 	TERM_HEIGHT = 480,
 	DEPTH = 8,
+#else
+	TERM_WIDTH  = 1280,
+	TERM_HEIGHT = 1024,
+	DEPTH = 8,
+#endif
 };
 
 enum fbtype_t {
@@ -45,6 +51,7 @@ struct fbinfo_t {
 
 struct framebuffer {
 	uint8_t *fp;          /* pointer of framebuffer(read only) */
+	uint8_t *fp_org;      /* pointer of framebuffer(original) */
 	uint8_t *wall;        /* buffer for wallpaper */
 	uint8_t *buf;         /* copy of framebuffer */
 	int fd;               /* file descriptor of framebuffer */
@@ -52,6 +59,7 @@ struct framebuffer {
 	long screen_size;     /* screen data size (byte) */
 	int line_length;      /* line length (byte) */
 	int bytes_per_pixel;  /* BYTES per pixel */
+	int mode_org;         /* original framebuffer mode */
 	struct wsdisplay_cmap /* cmap for legacy framebuffer (8bpp pseudocolor) */
 		*cmap, *cmap_org;
 	struct fbinfo_t vinfo;
@@ -169,7 +177,7 @@ static inline uint32_t color2pixel(struct fbinfo_t *vinfo, uint32_t color)
 
 void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 {
-	int i, orig_mode, mode;
+	int i, mode;
 	char *path, *env;
 	struct wsdisplay_fbinfo finfo;
 	struct wsdisplay_gfx_mode gfx_mode;
@@ -179,7 +187,7 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 	else
 		fb->fd = eopen(fb_path, O_RDWR);
 
-	ioctl(fb->fd, WSDISPLAYIO_GMODE, &orig_mode);
+	ioctl(fb->fd, WSDISPLAYIO_GMODE, &(fb->mode_org));
 
 	gfx_mode.width  = TERM_WIDTH;
 	gfx_mode.height = TERM_HEIGHT;
@@ -197,12 +205,17 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 		goto fb_init_error;
 	}
 
+	/* XXX: Should be check if WSDISPLAYIO_TYPE_LUNA ? */
+
 	fb->width  = TERM_WIDTH;
 	fb->height = TERM_HEIGHT;
 	fb->bytes_per_pixel = my_ceil(DEPTH, BITS_PER_BYTE);
 
-	fb->line_length = fb->bytes_per_pixel * fb->width;
-	fb->screen_size = fb->height * fb->line_length;
+	if (ioctl(fb->fd, WSDISPLAYIO_LINEBYTES, &(fb->line_length))) {
+		fatal("ioctl: WSDISPLAYIO_LINEBYTES failed");
+		goto fb_init_error;
+	}
+	fb->screen_size = fb->height * fb->line_length * DEPTH;
 	fb->vinfo = bpp_table[DEPTH];
 
 	if (DEBUG)
@@ -214,7 +227,7 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 		fb->cmap = fb->cmap_org = NULL;
 		fb->vinfo.fbtype = FBTYPE_RGB;
 	}
-	else if (DEPTH == 8) {
+	else if (DEPTH == 8 || DEPTH == 4 || DEPTH == 1 ) {
 		cmap_create(&fb->cmap, COLORS);
 		cmap_create(&fb->cmap_org, finfo.cmsize);
 		cmap_init(fb);
@@ -226,7 +239,10 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 	for (i = 0; i < COLORS; i++) /* init color palette */
 		color_palette[i] = (fb->bytes_per_pixel == 1) ? (uint32_t) i: color2pixel(&fb->vinfo, color_list[i]);
 
-	fb->fp    = (uint8_t *) emmap(0, fb->screen_size, PROT_WRITE | PROT_READ, MAP_SHARED, fb->fd, 0);
+	fb->fp_org = (uint8_t *) emmap(0, fb->screen_size, PROT_WRITE | PROT_READ, MAP_SHARED, fb->fd, 0);
+
+	fb->fp = fb->fp_org + 8; /* XXX: LUNA quirk; need 8 byte offset */
+
 	fb->buf   = (uint8_t *) ecalloc(1, fb->screen_size);
 	//fb->wall  = (WALLPAPER && fb->bytes_per_pixel > 1) ? load_wallpaper(fb): NULL;
 
@@ -238,7 +254,7 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 	return;
 
 fb_init_error:
-	ioctl(fb->fd, WSDISPLAYIO_SMODE, &orig_mode);
+	ioctl(fb->fd, WSDISPLAYIO_SMODE, &(fb->mode_org));
 	exit(EXIT_FAILURE);
 }
 
@@ -251,6 +267,8 @@ void fb_die(struct framebuffer *fb)
 	}
 	free(fb->buf);
 	free(fb->wall);
-	emunmap(fb->fp, fb->screen_size);
+	emunmap(fb->fp_org, fb->screen_size);
+	if (ioctl(fb->fd, WSDISPLAYIO_SMODE, &(fb->mode_org)))
+		fatal("ioctl: WSDISPLAYIO_SMODE failed");
 	eclose(fb->fd);
 }

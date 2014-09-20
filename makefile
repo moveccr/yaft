@@ -1,7 +1,8 @@
 CC ?= gcc
 #CC ?= clang
 
-CFLAGS  ?= -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
+#CFLAGS  ?= -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
+CFLAGS  = -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
 LDFLAGS ?=
 
 XCFLAGS  ?= -std=c99 -pedantic -Wall -Wextra -I/usr/include/X11/ -O3 -s -pipe
@@ -10,9 +11,9 @@ XLDFLAGS ?= -lX11
 HDR = color.h conf.h dcs.h draw.h function.h osc.h parse.h terminal.h util.h yaft.h glyph.h \
 	fb/linux.h fb/freebsd.h fb/netbsd.h fb/openbsd.h x/x.h
 
-DESTDIR   =
-PREFIX    = $(DESTDIR)/usr
-MANPREFIX = $(DESTDIR)/usr/share/man
+DESTDIR   = /usr/local
+PREFIX    = $(DESTDIR)
+MANPREFIX = $(DESTDIR)/man
 
 all: yaft
 
