@@ -14,18 +14,6 @@ typedef unsigned long   u_long;
 #include  <dev/wscons/wsksymdef.h>
 
 /* some structs for OpenBSD */
-enum term_size {
-#if 0
-	TERM_WIDTH  = 640,
-	TERM_HEIGHT = 480,
-	DEPTH = 8,
-#else
-	TERM_WIDTH  = 1280,
-	TERM_HEIGHT = 1024,
-	DEPTH = 8,
-#endif
-};
-
 enum fbtype_t {
 	FBTYPE_RGB = 0,
 	FBTYPE_INDEX,
@@ -56,6 +44,7 @@ struct framebuffer {
 	uint8_t *buf;         /* copy of framebuffer */
 	int fd;               /* file descriptor of framebuffer */
 	int width, height;    /* display resolution */
+	int depth;            /* display depth */
 	long screen_size;     /* screen data size (byte) */
 	int line_length;      /* line length (byte) */
 	int bytes_per_pixel;  /* BYTES per pixel */
@@ -180,21 +169,11 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 	int i, mode;
 	char *path, *env;
 	struct wsdisplay_fbinfo finfo;
-	struct wsdisplay_gfx_mode gfx_mode;
 
 	if ((path = getenv("FRAMEBUFFER")) != NULL)
 		fb->fd = eopen(path, O_RDWR);
 	else
 		fb->fd = eopen(fb_path, O_RDWR);
-
-	ioctl(fb->fd, WSDISPLAYIO_GMODE, &(fb->mode_org));
-
-	gfx_mode.width  = TERM_WIDTH;
-	gfx_mode.height = TERM_HEIGHT;
-	gfx_mode.depth  = DEPTH;
-
-	if(ioctl(fb->fd, WSDISPLAYIO_SETGFXMODE, &gfx_mode))
-		fatal("ioctl: WSDISPLAYIO_SETGFXMODE failed");
 
 	mode = WSDISPLAYIO_MODE_DUMBFB;
 	if (ioctl(fb->fd, WSDISPLAYIO_SMODE, &mode))
@@ -207,27 +186,28 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 
 	/* XXX: Should be check if WSDISPLAYIO_TYPE_LUNA ? */
 
-	fb->width  = TERM_WIDTH;
-	fb->height = TERM_HEIGHT;
-	fb->bytes_per_pixel = my_ceil(DEPTH, BITS_PER_BYTE);
+	fb->width  = finfo.width;
+	fb->height = finfo.height;
+	fb->depth =  finfo.depth;
+	fb->bytes_per_pixel = my_ceil(finfo.depth, BITS_PER_BYTE);
 
 	if (ioctl(fb->fd, WSDISPLAYIO_LINEBYTES, &(fb->line_length))) {
 		fatal("ioctl: WSDISPLAYIO_LINEBYTES failed");
 		goto fb_init_error;
 	}
-	fb->screen_size = fb->height * fb->line_length * DEPTH;
-	fb->vinfo = bpp_table[DEPTH];
+	fb->screen_size = fb->height * fb->line_length * finfo.depth;
+	fb->vinfo = bpp_table[finfo.depth];
 
 	if (DEBUG)
 		fprintf(stderr, "cmsize:%d depth:%d width:%d height:%d line_length:%d\n",
-			finfo.cmsize, DEPTH, TERM_WIDTH, TERM_HEIGHT, fb->line_length);
+			finfo.cmsize, finfo.depth, finfo.depth, finfo.height, fb->line_length);
 
-	if (DEPTH == 15 || DEPTH == 16
-		|| DEPTH == 24 || DEPTH == 32) {
+	if (finfo.depth == 15 || finfo.depth == 16
+		|| finfo.depth == 24 || finfo.depth == 32) {
 		fb->cmap = fb->cmap_org = NULL;
 		fb->vinfo.fbtype = FBTYPE_RGB;
 	}
-	else if (DEPTH == 8 || DEPTH == 4 || DEPTH == 1 ) {
+	else if (finfo.depth == 8 || finfo.depth == 4 || finfo.depth == 1 ) {
 		cmap_create(&fb->cmap, COLORS);
 		cmap_create(&fb->cmap_org, finfo.cmsize);
 		cmap_init(fb);

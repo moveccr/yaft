@@ -61,7 +61,7 @@ static inline void draw_sixel(struct framebuffer *fb, int line, int col, uint8_t
 				+ y * fb->line_length + ((x / 32) * 4));
 			x &= ALIGNMASK;	/* x % 32 */
 
-			for (i = 0; i < DEPTH; i++) {
+			for (i = 0; i < fb->depth; i++) {
 				p = (uint32_t *)((uint8_t *)p0 + PLANESIZE * i);
 				if (pixel & (0x01 << i))
 					/* set */
@@ -155,7 +155,7 @@ static inline void draw_line(struct framebuffer *fb, struct terminal *term, int 
 				glyph <<= bdf_shift;
 				glyph = glyph >> align;
 
-				for (plane = 0; plane < DEPTH; plane++)
+				for (plane = 0; plane < fb->depth; plane++)
 					draw_glyph((uint32_t *)p, plane, glyph, fg, bg, lmask);
 
 				p += fb->line_length;
@@ -175,13 +175,13 @@ static inline void draw_line(struct framebuffer *fb, struct terminal *term, int 
 				glyph <<= bdf_shift;
 				lhalf = glyph >> align;
 
-				for (plane = 0; plane < DEPTH; plane++)
+				for (plane = 0; plane < fb->depth; plane++)
 					draw_glyph((uint32_t *)p, plane, lhalf, fg, bg, lmask);
 
 				p += BYTESDONE;
 				rhalf = glyph << (BLITWIDTH - align);
 
-				for (plane = 0; plane < DEPTH; plane++)
+				for (plane = 0; plane < fb->depth; plane++)
 					draw_glyph((uint32_t *)p, plane, rhalf, fg, bg, rmask);
 
 				p = (q += fb->line_length);
@@ -191,9 +191,9 @@ static inline void draw_line(struct framebuffer *fb, struct terminal *term, int 
 	}
 
 	/* actual display update (bit blit) */
-	size = TERM_WIDTH / 8;
+	size = fb->width / 8;
 	for (height = 0; height < CELL_HEIGHT; height++) {
-		for (plane = 0; plane < DEPTH; plane++) {
+		for (plane = 0; plane < fb->depth; plane++) {
 			pos = (line * CELL_HEIGHT + height) * fb->line_length
 				+ PLANESIZE * plane;
 			memcpy(fb->fp + pos, fb->buf + pos, size);
