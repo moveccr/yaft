@@ -221,15 +221,27 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 
 	fb->fp_org = (uint8_t *) emmap(0, fb->screen_size, PROT_WRITE | PROT_READ, MAP_SHARED, fb->fd, 0);
 
-	fb->fp = fb->fp_org + 8; /* XXX: LUNA quirk; need 8 byte offset */
+	fb->fp = fb->fp_org + 8; /* XXX: LUNA quirk; need 8 bytes offset */
 
 	fb->buf   = (uint8_t *) ecalloc(1, fb->screen_size);
 	//fb->wall  = (WALLPAPER && fb->bytes_per_pixel > 1) ? load_wallpaper(fb): NULL;
 
 	if (((env = getenv("YAFT")) != NULL) && (strstr(env, "wall") != NULL))
 		fb->wall = load_wallpaper(fb);
-	else
+	else {
 		fb->wall = NULL;
+
+		/*
+		 * Clear the whole screen when we do not use the wallpaper.
+		 * If (fb->height % CELL_HEIGHT != 0), yaft will not touch that
+		 * surplus (most downside) area from now.  So it is better to
+		 * clear the previous garbage image here.
+		 * Note that we use fb->fp_org instead of fb->fp, because
+		 * fb->screen_size is the 'whole' frame buffer memory size
+		 * without 8 bytes offset.
+		 */
+		memset(fb->fp_org, 0, fb->screen_size);
+	}
 
 	return;
 
