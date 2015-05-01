@@ -1,4 +1,6 @@
 /* See LICENSE for licence details. */
+#include "../necwab.h"
+#include "../nec_cirrus.h"
 
 /* _XOPEN_SOURCE >= 600 invalidates __BSD_VISIBLE
         so define some types manually */
@@ -15,8 +17,8 @@ typedef unsigned long   u_long;
 
 /* some structs for OpenBSD */
 enum term_size {
-	TERM_WIDTH  = 640,
-	TERM_HEIGHT = 480,
+	TERM_WIDTH  = 1024,
+	TERM_HEIGHT = 768,
 	DEPTH = 8,
 };
 
@@ -44,7 +46,9 @@ struct fbinfo_t {
 };
 
 struct framebuffer {
+#if 0
 	uint8_t *fp;          /* pointer of framebuffer(read only) */
+#endif
 	uint8_t *wall;        /* buffer for wallpaper */
 	uint8_t *buf;         /* copy of framebuffer */
 	int fd;               /* file descriptor of framebuffer */
@@ -78,7 +82,9 @@ uint8_t *load_wallpaper(struct framebuffer *fb)
 	uint8_t *ptr;
 
 	ptr = (uint8_t *) ecalloc(1, fb->screen_size);
+#if 0	/* not yet */
 	memcpy(ptr, fb->fp, fb->screen_size);
+#endif
 
 	return ptr;
 }
@@ -169,7 +175,12 @@ static inline uint32_t color2pixel(struct fbinfo_t *vinfo, uint32_t color)
 
 void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 {
+#if 0
 	int i, orig_mode, mode;
+#else
+	int i;
+#endif
+#if 0
 	char *path, *env;
 	struct wsdisplay_fbinfo finfo;
 	struct wsdisplay_gfx_mode gfx_mode;
@@ -196,6 +207,9 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 		fprintf(stderr, "ioctl: WSDISPLAYIO_GINFO failed");
 		goto fb_init_error;
 	}
+#endif
+
+	necwab_init(2);	/* 1024x768 */
 
 	fb->width  = TERM_WIDTH;
 	fb->height = TERM_HEIGHT;
@@ -205,9 +219,11 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 	fb->screen_size = fb->height * fb->line_length;
 	fb->vinfo = bpp_table[DEPTH];
 
+#if 0
 	if (DEBUG)
 		fprintf(stderr, "cmsize:%d depth:%d width:%d height:%d line_length:%d\n",
 			finfo.cmsize, DEPTH, TERM_WIDTH, TERM_HEIGHT, fb->line_length);
+#endif
 
 	if (DEPTH == 15 || DEPTH == 16
 		|| DEPTH == 24 || DEPTH == 32) {
@@ -215,9 +231,11 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 		fb->vinfo.fbtype = FBTYPE_RGB;
 	}
 	else if (DEPTH == 8) {
+#if 0
 		cmap_create(&fb->cmap, COLORS);
 		cmap_create(&fb->cmap_org, finfo.cmsize);
 		cmap_init(fb);
+#endif
 		fb->vinfo.fbtype = FBTYPE_INDEX;
 	}
 	else
@@ -226,20 +244,26 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 	for (i = 0; i < COLORS; i++) /* init color palette */
 		color_palette[i] = (fb->bytes_per_pixel == 1) ? (uint32_t) i: color2pixel(&fb->vinfo, color_list[i]);
 
+#if 0
 	fb->fp    = (uint8_t *) emmap(0, fb->screen_size, PROT_WRITE | PROT_READ, MAP_SHARED, fb->fd, 0);
+#endif
 	fb->buf   = (uint8_t *) ecalloc(1, fb->screen_size);
 	//fb->wall  = (WALLPAPER && fb->bytes_per_pixel > 1) ? load_wallpaper(fb): NULL;
 
+#if 0
 	if (((env = getenv("YAFT")) != NULL) && (strstr(env, "wall") != NULL))
 		fb->wall = load_wallpaper(fb);
 	else
+#endif
 		fb->wall = NULL;
 
 	return;
 
+#if 0
 fb_init_error:
 	ioctl(fb->fd, WSDISPLAYIO_SMODE, &orig_mode);
 	exit(EXIT_FAILURE);
+#endif
 }
 
 void fb_die(struct framebuffer *fb)
@@ -251,6 +275,9 @@ void fb_die(struct framebuffer *fb)
 	}
 	free(fb->buf);
 	free(fb->wall);
+#if 0
 	emunmap(fb->fp, fb->screen_size);
+#endif
+	necwab_fini();
 	eclose(fb->fd);
 }

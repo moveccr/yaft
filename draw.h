@@ -1,4 +1,8 @@
 /* See LICENSE for licence details. */
+#include <endian.h>
+#include "necwab.h"
+#include "nec_cirrus.h"
+
 static inline void draw_sixel(struct framebuffer *fb, int line, int col, uint8_t *pixmap)
 {
 	int h, w, src_offset, dst_offset;
@@ -11,6 +15,9 @@ static inline void draw_sixel(struct framebuffer *fb, int line, int col, uint8_t
 
 			dst_offset = (line * CELL_HEIGHT + h) * fb->line_length + (col * CELL_WIDTH + w) * fb->bytes_per_pixel;
 			pixel = color2pixel(&fb->vinfo, color);
+#ifdef BIG_ENDIAN
+			pixel = htole32(pixel);
+#endif
 			memcpy(fb->buf + dst_offset, &pixel, fb->bytes_per_pixel);
 		}
 	}
@@ -71,6 +78,9 @@ static inline void draw_line(struct framebuffer *fb, struct terminal *term, int 
 				else
 					pixel = term->color_palette[color_pair.bg];
 
+#ifdef BIG_ENDIAN
+				pixel = htole32(pixel);
+#endif
 				/* update copy buffer only */
 				memcpy(fb->buf + pos, &pixel, fb->bytes_per_pixel);
 			}
@@ -80,7 +90,7 @@ static inline void draw_line(struct framebuffer *fb, struct terminal *term, int 
 	/* actual display update (bit blit) */
 	pos = (line * CELL_HEIGHT) * fb->line_length;
 	size = CELL_HEIGHT * fb->line_length;
-	memcpy(fb->fp + pos, fb->buf + pos, size);
+	nec_cirrus_memcpy(pos, fb->buf + pos, size);
 
 	/* TODO: page flip
 		if fb_fix_screeninfo.ypanstep > 0, we can use hardware panning.

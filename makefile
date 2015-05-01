@@ -1,18 +1,20 @@
 CC ?= gcc
 #CC ?= clang
 
-CFLAGS  ?= -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
+#CFLAGS  ?= -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
+CFLAGS  = -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
 LDFLAGS ?=
 
 XCFLAGS  ?= -std=c99 -pedantic -Wall -Wextra -I/usr/include/X11/ -O3 -s -pipe
 XLDFLAGS ?= -lX11
 
 HDR = color.h conf.h dcs.h draw.h function.h osc.h parse.h terminal.h util.h yaft.h glyph.h \
-	fb/linux.h fb/freebsd.h fb/netbsd.h fb/openbsd.h x/x.h
+	fb/linux.h fb/freebsd.h fb/netbsd.h fb/openbsd.h x/x.h \
+	necwab.h nec_cirrus.h
 
-DESTDIR   =
-PREFIX    = $(DESTDIR)/usr
-MANPREFIX = $(DESTDIR)/usr/share/man
+DESTDIR   = /usr/local
+PREFIX    = $(DESTDIR)
+MANPREFIX = $(DESTDIR)/man
 
 all: yaft
 
@@ -30,12 +32,17 @@ glyph.h: mkfont_bdf
 	# BDF1 BDF2 BDF3...: monospace bdf files (must be the same size)
 	./mkfont_bdf table/alias fonts/milkjf_k16.bdf fonts/milkjf_8x16r.bdf fonts/milkjf_8x16.bdf > glyph.h
 
-yaft: yaft.c $(HDR)
+yaft: yaft.o necwab.o nec_cirrus.o
 	# If you want to change configuration, please modify conf.h before make (see conf.h for more detail)
-	$(CC) -o $@ $< $(CFLAGS) $(LDFLAGS)
+	$(CC) -o $@ yaft.o necwab.o nec_cirrus.o $(LDFLAGS)
+
+yaft.o: yaft.c $(HDR) necwab.h nec_cirrus.h
+
+necwab.o: necwab.c necwab.h nec_cirrus.h
+
+nec_cirrus.o: nec_cirrus.c color.h necwab.h nec_cirrus.h
 
 yaftx: x/yaftx.c $(HDR)
-	# If you want to change configuration, please modify conf.h before make (see conf.h for more detail)
 	$(CC) -o $@ $< $(XCFLAGS) $(XLDFLAGS)
 
 install:
