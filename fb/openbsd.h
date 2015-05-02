@@ -17,9 +17,9 @@ typedef unsigned long   u_long;
 
 /* some structs for OpenBSD */
 enum term_size {
-	TERM_WIDTH  = 1024,
-	TERM_HEIGHT = 768,
-	DEPTH = 8,
+	TERM_WIDTH  = 800,
+	TERM_HEIGHT = 600,
+	DEPTH = 16,
 };
 
 enum fbtype_t {
@@ -209,8 +209,6 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 	}
 #endif
 
-	necwab_init(2);	/* 1024x768 */
-
 	fb->width  = TERM_WIDTH;
 	fb->height = TERM_HEIGHT;
 	fb->bytes_per_pixel = my_ceil(DEPTH, BITS_PER_BYTE);
@@ -219,6 +217,20 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 	fb->screen_size = fb->height * fb->line_length;
 	fb->vinfo = bpp_table[DEPTH];
 
+	if ((fb->width == 640) && (fb->bytes_per_pixel == 1))
+		necwab_init(0);		/* 800x600, 16bpp */
+	else if ((fb->width == 800) && (fb->bytes_per_pixel == 1))
+		necwab_init(1);		/* 800x600, 16bpp */
+	else if (fb->width == 1024)
+		necwab_init(2);		/* 1024x768, 8bpp */
+	else if ((fb->width == 640) && (fb->bytes_per_pixel == 2))
+		necwab_init(16);	/* 640x480, 16bpp */
+	else if ((fb->width == 800) && (fb->bytes_per_pixel == 2))
+		necwab_init(17);	/* 800x600, 16bpp */
+	else {
+		fprintf(stderr, "TERM_WIDTH=%d: not supported", fb->width);
+		goto fb_init_error;
+	}
 #if 0
 	if (DEBUG)
 		fprintf(stderr, "cmsize:%d depth:%d width:%d height:%d line_length:%d\n",
@@ -259,11 +271,12 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 
 	return;
 
-#if 0
 fb_init_error:
+#if 0
 	ioctl(fb->fd, WSDISPLAYIO_SMODE, &orig_mode);
-	exit(EXIT_FAILURE);
 #endif
+	necwab_fini();
+	exit(EXIT_FAILURE);
 }
 
 void fb_die(struct framebuffer *fb)

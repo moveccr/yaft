@@ -23,8 +23,6 @@
 #endif
 
 #include <stdio.h>
-#include <syslog.h>	/* syslog */
-#include <stdarg.h>	/* syslog */
 #include <sys/types.h>
 
 #include "nec_cirrus.h"
@@ -32,7 +30,7 @@
 
 static u_int8_t nec_cirrus_SRdata[] = {
 	0x00,0x02,0x00,0x03,0x01,0x01,0x02,0xFF,
-	0x03,0x00,0x04,0x0E,0x05,0x0F,0x06,0x12,	/* SR4 0x0e -> 0x06? */
+	0x03,0x00,0x04,0x0E,0x05,0x0F,0x06,0x12,
 	0x07,0x01,0x08,0x00,0x09,0x6C,0x0A,0x59,	/* SR7 0x07 -> 0x01 if 8 bit? */
 	0x0B,0x4A,0x0C,0x5B,0x0D,0x42,0x0E,0x54,
 	0x0F,0xBD,0x10,0x00,0x11,0x00,0x12,0x00,
@@ -129,7 +127,7 @@ struct nec_cirrus_config_t nec_cirrus_config[] = {
 	}
 };
 
-void	nec_cirrus_chip_init(int);
+struct nec_cirrus_config_t *nec_cirrus_chip_init(int);
 void	nec_cirrus_dump(u_int32_t);
 void	nec_cirrus_enter(void);
 void	nec_cirrus_leave(void);
@@ -140,6 +138,7 @@ void
 nec_cirrus_init(int mode)
 {
 	int i;
+	struct nec_cirrus_config_t *ncc;
 
 	/* set VRAM window address to 0xf00000-0xf0ffff */
 	necwab_outb(NECWAB_INDEX, 0x01);
@@ -148,11 +147,11 @@ nec_cirrus_init(int mode)
 
 	/* enable WAB chip register */
 	nec_cirrus_enter();
-	nec_cirrus_chip_init(mode);
+	ncc = nec_cirrus_chip_init(mode);
 
 	/* clear all 1MB VRAM */
 	for (i = 0; i < 0xfffff; i++) {
-		nec_cirrus_write(i, 7);
+		nec_cirrus_write(i, 0);
 	}
 }
 
@@ -166,60 +165,6 @@ nec_cirrus_chip_id(void)
 	data >>= 2;	/* bit 7-2 has Chip ID */
 	return data;
 }
-
-#if 0
-/*
- * enable GD5428 registers on WAB
- */
-void
-nec_cirrus_reg_on(void)
-{
-	u_int8_t data;
-	necwab_outb(NECWAB_INDEX, 0x03);
-	data = necwab_inb(NECWAB_DATA);
-	data |= 0x01;
-	necwab_outb(NECWAB_DATA, data);
-}
-
-/*
- * disable GD5428 registers on WAB
- */
-void
-nec_cirrus_reg_off(void)
-{
-	u_int8_t data;
-	necwab_outb(NECWAB_INDEX, 0x03);
-	data = necwab_inb(NECWAB_DATA);
-	data &= ~0x01;
-	necwab_outb(NECWAB_DATA, data);
-}
-
-/*
- * turn on display relay on WAB
- */
-void
-nec_cirrus_disp_on(void)
-{
-	u_int8_t data;
-	necwab_outb(NECWAB_INDEX, 0x03);
-	data = necwab_inb(NECWAB_DATA);
-	data |= 0x02;
-	necwab_outb(NECWAB_DATA, data);
-}
-
-/*
- * turn off display relay on WAB
- */
-void
-nec_cirrus_disp_off(void)
-{
-	u_int8_t data;
-	necwab_outb(NECWAB_INDEX, 0x03);
-	data = necwab_inb(NECWAB_DATA);
-	data &= ~0x02;
-	necwab_outb(NECWAB_DATA, data);
-}
-#endif
 
 /*
  * set base register (with simple cache)
@@ -347,13 +292,15 @@ nec_cirrus_leave(void)
 	necwab_outb(NECWAB_DATA, 0x00);
 }
 
-void
+struct nec_cirrus_config_t *
 nec_cirrus_chip_init(int mode)
 {
 	u_int8_t *c, *nec_cirrus_CRdata;
-	struct nec_cirrus_config_t *ncconfig;
+	struct nec_cirrus_config_t *ncc;
 
-	ncconfig = &nec_cirrus_config[mode];
+	ncc = &nec_cirrus_config[mode & 0x0f];
+	if (mode & 0xf0)
+		ncc->depth = 16;
 
 	nec_cirrus_unlock();
 
@@ -368,20 +315,12 @@ nec_cirrus_chip_init(int mode)
 		necwab_outb(GD542X_REG_3C5, *c++);
 	}
 
-#ifdef USE_16BIT
-	/* color mode */
-	necwab_outb(GD542X_REG_3C4, 0x0f);
-	necwab_outb(GD542X_REG_3C5, 0x95);
-	necwab_outb(GD542X_REG_3C4, 0x07);
-	necwab_outb(GD542X_REG_3C5, 0x07);
-#endif
-
-	nec_cirrus_CRdata = ncconfig->CRdata;
+	nec_cirrus_CRdata = ncc->CRdata;
 
 	necwab_outb(GD542X_REG_3C4, 0x0e);
-	necwab_outb(GD542X_REG_3C5, ncconfig->freq_num);
+	necwab_outb(GD542X_REG_3C5, ncc->freq_num);
 	necwab_outb(GD542X_REG_3C4, 0x1e);
-	necwab_outb(GD542X_REG_3C5, ncconfig->freq_denom);
+	necwab_outb(GD542X_REG_3C5, ncc->freq_denom);
 
 	/* CR */
 	/* unlock CR0-7 */
@@ -397,6 +336,33 @@ nec_cirrus_chip_init(int mode)
 	for (c = nec_cirrus_GRdata; *c != 0xff; /* empty */) {
 		necwab_outb(GD542X_REG_3CE, *c++);
 		necwab_outb(GD542X_REG_3CF, *c++);
+	}
+
+	if (ncc->depth == 16) {
+		/* SR */
+		/* clock: 16bit/pixel data at pixel rate */
+		necwab_outb(GD542X_REG_3C4, 0x07);
+		necwab_outb(GD542X_REG_3C5, 0x07);
+		/* color mode */
+		necwab_outb(GD542X_REG_3C4, 0x0f);
+		necwab_outb(GD542X_REG_3C5, 0x95);
+		necwab_outb(GD542X_REG_3C4, 0x07);
+		necwab_outb(GD542X_REG_3C5, 0x07);
+
+		/* CR */
+		necwab_outb(GD542X_REG_3D4, 0x13);
+		if ((mode  & 0x0f) == 0)	/* 640x480 */
+			necwab_outb(GD542X_REG_3D5, 0xa0);
+		else if ((mode  & 0x0f) == 1)	/* 800x600 */
+			necwab_outb(GD542X_REG_3D5, 0xc8);
+
+#if 0
+		/* GR */
+		/* not necessary? current value is 0x0c on both 8/16 bit */
+		/* GRB: Enable enhanced writes for 16-bit pixels */
+		necwab_outb(GD542X_REG_3CE, 0x0b);
+		necwab_outb(GD542X_REG_3CF, 0x1c);
+#endif
 	}
 
 	/* AR */
@@ -415,21 +381,25 @@ nec_cirrus_chip_init(int mode)
 
 	/* HDR: Hidden DAC Register */
 	necwab_inb(GD542X_REG_3DA);
+	necwab_inb(GD542X_REG_3C6);	/* four times dummy reads */
 	necwab_inb(GD542X_REG_3C6);
 	necwab_inb(GD542X_REG_3C6);
 	necwab_inb(GD542X_REG_3C6);
-	necwab_inb(GD542X_REG_3C6);
-#if defined(USE_16BIT)
-	/* 0xc1 = 16bit, 5-6-5 RGB */
-	necwab_outb(GD542X_REG_3C6, 0xc1);
-#elif defined(USE_8BIT_RGB)
-	/* 0xc9 = 8bit 3-3-2 RGB */
-	necwab_outb(GD542X_REG_3C6, 0xc9);
+	if (ncc->depth == 16) {
+		/* 0xc1 = 16bit, 5-6-5 RGB */
+		necwab_outb(GD542X_REG_3C6, 0xc1);
+	} else {
+#ifdef USE_8BIT_RGB
+		/* 0xc9 = 8bit 3-3-2 RGB */
+		necwab_outb(GD542X_REG_3C6, 0xc9);
 #else
-	/* 0x00 = 256 color map (VGA compat.) */
-	necwab_outb(GD542X_REG_3C6, 0x00);
+		/* 0x00 = 256 color map (VGA compat.) */
+		necwab_outb(GD542X_REG_3C6, 0x00);
 #endif
+	}
 	nec_cirrus_set_default_cmap();
+
+	return ncc;
 }
 
 /*
@@ -437,7 +407,7 @@ nec_cirrus_chip_init(int mode)
  */
 void
 nec_cirrus_set_default_cmap(void) {
-	u_int i;
+	int i;
 	u_int8_t red, green, blue;
 	extern const u_int32_t color_list[]; /* global */
 
@@ -464,5 +434,4 @@ nec_cirrus_memcpy(u_int32_t d, const u_int8_t *s, int len)
 
 	for (i = 0; i < len; i++)
 		nec_cirrus_write(d++, *s++);
-	return;
 }
