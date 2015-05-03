@@ -144,6 +144,7 @@ struct terminal {
 	int fd;                                      /* master fd */
 	int width, height;                           /* terminal size (pixel) */
 	int cols, lines;                             /* terminal size (cell) */
+	int rpad;                                    /* right pad (pixel) */
 	struct cell_t **cells;                       /* pointer to each cell: cells[lines][cols] */
 	struct margin scroll;                        /* scroll margin */
 	struct point_t cursor;                       /* cursor pos (x, y) */

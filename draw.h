@@ -32,7 +32,7 @@ static inline void draw_line(struct framebuffer *fb, struct terminal *term, int 
 	struct cell_t *cellp;
 
 	for (col = term->cols - 1; col >= 0; col--) {
-		margin_right = (term->cols - 1 - col) * CELL_WIDTH;
+		margin_right = (term->cols - 1 - col) * CELL_WIDTH + term->rpad;
 
 		/* target cell */
 		cellp = &term->cells[line][col];

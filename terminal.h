@@ -347,6 +347,7 @@ void term_init(struct terminal *term, int width, int height)
 
 	term->cols  = term->width / CELL_WIDTH;
 	term->lines = term->height / CELL_HEIGHT;
+	term->rpad  = term->width % CELL_WIDTH;
 
 	if (DEBUG)
 		fprintf(stderr, "width:%d height:%d cols:%d lines:%d\n",
