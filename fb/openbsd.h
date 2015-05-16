@@ -218,9 +218,9 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 	fb->vinfo = bpp_table[DEPTH];
 
 	if ((fb->width == 640) && (fb->bytes_per_pixel == 1))
-		necwab_init(0);		/* 800x600, 16bpp */
+		necwab_init(0);		/* 800x600, 8bpp */
 	else if ((fb->width == 800) && (fb->bytes_per_pixel == 1))
-		necwab_init(1);		/* 800x600, 16bpp */
+		necwab_init(1);		/* 800x600, 8bpp */
 	else if (fb->width == 1024)
 		necwab_init(2);		/* 1024x768, 8bpp */
 	else if ((fb->width == 640) && (fb->bytes_per_pixel == 2))
