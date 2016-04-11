@@ -20,19 +20,20 @@
 
 #include <stdio.h>
 #include <fcntl.h>		/* open(2) */
-#include <unistd.h>		/* close(2) */
+#include <unistd.h>		/* usleep(3) */
+#include <sys/ioctl.h>		/* ioctl(2) */
 #include <sys/mman.h>		/* mmap(2) */
 #include <sys/types.h>
 
-#include "nec_cirrus.h"
 #include "necwab.h"
+#include "nec_cirrus.h"
 
 int wab_iofd, wab_memfd;
 u_int8_t *pc98iobase, *pc98membase;
 u_int8_t *wab_iobase,*wab_membase;
 
 int
-necwab_init(int mode)
+necwab_init(struct board_type_t *bt, int mode)
 {
 	int board_type;
 
@@ -50,8 +51,8 @@ necwab_init(int mode)
 	}
 	wab_iobase = pc98iobase + 0x0000;
 
-	board_type = necwab_ident_board();
-	if (board_type != 0x60) {
+	board_type = necwab_ident_board(bt);
+	if (board_type == -1) {
 		printf("No WAB found\n");
 		goto exit2;
 	}
@@ -70,8 +71,8 @@ necwab_init(int mode)
 	}
 	wab_membase = pc98membase + 0x0000;
 
-	nec_cirrus_init(mode);
-	return 0;
+	nec_cirrus_init(bt, mode);
+	return board_type;
 
 exit3:
 	close(wab_memfd);
@@ -84,11 +85,17 @@ exit1:
 void
 necwab_fini(void)
 {
-	nec_cirrus_leave();
+	nec_cirrus_fini();
 	munmap((void *)pc98membase, 0x1000000);
 	close(wab_memfd);
 	munmap((void *)pc98iobase, 0x10000);
 	close(wab_iofd);
+}
+
+u_int8_t
+necwab_inb(u_int16_t index)
+{
+	return *(pc98iobase + index);
 }
 
 inline void
@@ -97,28 +104,76 @@ necwab_outb(u_int16_t index, u_int8_t data)
 	*(pc98iobase + index) = data;
 }
 
-inline u_int8_t
-necwab_inb(u_int16_t index)
-{
-	return *(pc98iobase + index);
-}
-
 int
-necwab_ident_board(void)
+necwab_ident_board(struct board_type_t *bt)
 {
 	u_int8_t data;
+	u_int i;
+
+	bt->offset = 0;
+
+	/* first, try to check 3rd-party-board */
+	for (i = 0; i < 0x0f; i += 2) {
+		if (i == 8) continue;
+
+		data = necwab_inb(0x51e1 + i);
+		if (data == 0xc2) {
+			/* MELCO WGN-A/WSN-A found, with offset i */
+			bt->type = data;
+			bt->offset = i;
+
+			/*
+			 * from:
+			 * http://s-sasaji.ddo.jp/pcunix/wsn_pcm228r.diff
+			 */
+
+			/* WSN mode */
+			data = necwab_inb(0x56e1 + bt->offset);
+			data &= 0xae;
+			data |= 0x51;
+			necwab_outb(0x56e1 + bt->offset, data);
+
+			/* WSN SYS ENABLE */
+			data = necwab_inb(0x57e1 + bt->offset);
+			data &= 0xdf;	/* XXX? */
+			data |= 0x50;
+			necwab_outb(0x57e1 + bt->offset, data);
+
+#if 0
+			/* WSN PCM ENABLE */
+			data = necwab_inb(0x5be1 + bt->offset);
+			data &= 0xf9;
+			data |= 0x02;
+			necwab_outb(0x5be1 + bt->offset, data);
+
+			/* WSN FM INT ENABLE */
+			data = necwab_inb(0x51e0 + bt->offset);
+			data &= 0xfd;
+			necwab_outb(0x51e0 + bt->offset, data);
+#endif
+			return bt->type;
+		}
+	}
 
 	necwab_outb(NECWAB_INDEX, 0x00);
 	data = necwab_inb(NECWAB_DATA);
 
 	switch (data) {
+	case 0x20:
+		/* PC-9801-85(WAB-B) */
+		bt->type = data;
+		break;
 	case 0x60:
+		/* PC-9801-96(WAB-B3) */
+		bt->type = data;
 		break;
 	default:
 		printf("No supported WAB found, ID = 0x%02x\n", data);
 		data = -1;
+		bt->type = data;
 		break;
 	}
 
 	return (int)data;
 }
+

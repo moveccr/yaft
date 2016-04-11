@@ -1,6 +1,5 @@
 /* See LICENSE for licence details. */
 #include <endian.h>
-#include "necwab.h"
 #include "nec_cirrus.h"
 
 static inline void draw_sixel(struct framebuffer *fb, int line, int col, uint8_t *pixmap)
