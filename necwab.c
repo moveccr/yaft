@@ -52,10 +52,8 @@ necwab_init(struct board_type_t *bt, int mode)
 	wab_iobase = pc98iobase + 0x0000;
 
 	board_type = necwab_ident_board(bt);
-	if (board_type == -1) {
-		printf("No WAB found\n");
-		goto exit2;
-	}
+	if (board_type == -1)
+		goto exit1;
 
 	wab_memfd = open("/dev/pcexmem", O_RDWR, 0600);
 	if (wab_memfd == -1) {
@@ -169,11 +167,10 @@ necwab_ident_board(struct board_type_t *bt)
 		break;
 	default:
 		printf("No supported WAB found, ID = 0x%02x\n", data);
-		data = -1;
-		bt->type = data;
+		bt->type = -1;
 		break;
 	}
 
-	return (int)data;
+	return bt->type;
 }
 
