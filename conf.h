@@ -19,6 +19,9 @@ enum {
 	REPLACEMENT_CHAR = 0x003F, /* used for malformed UTF-8 sequence    : U+003F (QUESTION MARK)  */
 };
 
+/* xterm compatible 16-color */
+#define COLOR_XTERM
+
 /* TERM value */
 const char *term_name = "yaft-256color";
 
