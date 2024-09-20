@@ -43,32 +43,43 @@
 
 static inline void draw_sixel(struct framebuffer *fb, int line, int col, uint8_t *pixmap)
 {
-	int h, w, src_offset;
+	int h, w;
 	uint32_t pixel, color = 0;
-	int x, y, i;
+	int i;
 	uint32_t *p0, *p;
 
-	for (h = 0; h < CELL_HEIGHT; h++) {
-		for (w = 0; w < CELL_WIDTH; w++) {
-			src_offset = BYTES_PER_PIXEL * (h * CELL_WIDTH + w);
-			memcpy(&color, pixmap + src_offset, BYTES_PER_PIXEL);
+	uint32_t prev_color;
+	uint32_t s0 = 0;
+	uint32_t y = CELL_HEIGHT * line;
 
-			pixel = color2pixel(&fb->vinfo, color);
+	memcpy(&color, pixmap, BYTES_PER_PIXEL);
+	pixel = color2pixel(&fb->vinfo, color);
+	prev_color = color;
 
-			x = CELL_WIDTH * col + w;
-			y = CELL_HEIGHT * line + h;
+	for (h = 0; h < CELL_HEIGHT; h++, y++, s0 += BYTES_PER_PIXEL * CELL_WIDTH) {
+		uint32_t s1 = s0;
+		uint32_t x = CELL_WIDTH * col;
+		for (w = 0; w < CELL_WIDTH; w++, x++, s1 += BYTES_PER_PIXEL) {
+			uint32_t L = 1U << (31 - (x & ALIGNMASK));
+
+			memcpy(&color, pixmap + s1, BYTES_PER_PIXEL);
+
+			if (color != prev_color) {
+				prev_color = color;
+				pixel = color2pixel(&fb->vinfo, color);
+			}
+
 			p0 = (uint32_t *)((uint8_t *)fb->buf
 				+ y * fb->line_length + ((x / 32) * 4));
-			x &= ALIGNMASK;	/* x % 32 */
 
 			for (i = 0; i < fb->depth; i++) {
 				p = (uint32_t *)((uint8_t *)p0 + PLANESIZE * i);
 				if (pixel & (0x01 << i))
 					/* set */
-					*p |= (0x00000001 << (31 - x));
+					*p |= L;
 				else
 					/* reset */
-					*p &= ~(0x00000001 << (31 - x));
+					*p &= ~L;
 			}
 		}
 	}
