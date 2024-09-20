@@ -1,5 +1,8 @@
 /* See LICENSE for licence details. */
 
+// Write VRAM directly
+#define FB_DIRECT
+
 /* _XOPEN_SOURCE >= 600 invalidates __BSD_VISIBLE
         so define some types manually */
 typedef unsigned char   unchar;
@@ -223,7 +226,12 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 
 	fb->fp = fb->fp_org + 8; /* XXX: LUNA quirk; need 8 bytes offset */
 
+#if defined(FB_DIRECT)
+	fb->buf = fb->fp;
+#else
 	fb->buf   = (uint8_t *) ecalloc(1, fb->screen_size);
+#endif
+
 	//fb->wall  = (WALLPAPER && fb->bytes_per_pixel > 1) ? load_wallpaper(fb): NULL;
 
 	if (((env = getenv("YAFT")) != NULL) && (strstr(env, "wall") != NULL))
@@ -257,7 +265,9 @@ void fb_die(struct framebuffer *fb)
 		ioctl(fb->fd, WSDISPLAYIO_PUTCMAP, fb->cmap_org); /* not fatal */
 		cmap_die(fb->cmap_org);
 	}
+#if !defined(FB_DIRECT)
 	free(fb->buf);
+#endif
 	free(fb->wall);
 	emunmap(fb->fp_org, fb->screen_size);
 	if (ioctl(fb->fd, WSDISPLAYIO_SMODE, &(fb->mode_org)))

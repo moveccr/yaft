@@ -89,7 +89,10 @@ static inline void draw_glyph(uint32_t *p0, int plane, uint32_t glyph,
 
 static inline void draw_line(struct framebuffer *fb, struct terminal *term, int line)
 {
-	int pos, size, col, glyph_width, bdf_shift;
+#if !defined(FB_DIRECT)
+	int pos, size;
+#endif
+	int col, glyph_width, bdf_shift;
 	struct color_pair_t color_pair;
 	struct cell_t *cellp;
 
@@ -190,6 +193,7 @@ static inline void draw_line(struct framebuffer *fb, struct terminal *term, int 
 		}
 	}
 
+#if !defined(FB_DIRECT)
 	/* actual display update (bit blit) */
 	size = fb->width / 8;
 	for (height = 0; height < CELL_HEIGHT; height++) {
@@ -199,6 +203,7 @@ static inline void draw_line(struct framebuffer *fb, struct terminal *term, int 
 			memcpy(fb->fp + pos, fb->buf + pos, size);
 		}
 	}
+#endif
 
 	/* TODO: page flip
 		if fb_fix_screeninfo.ypanstep > 0, we can use hardware panning.
