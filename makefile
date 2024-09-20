@@ -2,7 +2,8 @@ CC ?= gcc
 #CC ?= clang
 
 #CFLAGS  ?= -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
-CFLAGS  = -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
+#CFLAGS  = -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
+CFLAGS  = -std=c99 -O2 -s -pipe
 LDFLAGS ?=
 
 XCFLAGS  ?= -std=c99 -pedantic -Wall -Wextra -I/usr/include/X11/ -O3 -s -pipe
