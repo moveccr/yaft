@@ -2,8 +2,9 @@ CC ?= gcc
 #CC ?= clang
 
 #CFLAGS  ?= -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
-#CFLAGS  = -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
-CFLAGS  = -std=c99 -O2 -s -pipe
+CFLAGS  = -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
+#CFLAGS  = -std=c99 -pedantic -Wall -Wextra -O2 -s -pipe
+#CFLAGS  = -std=c99 -g -O0 -s -pipe
 LDFLAGS ?=
 
 XCFLAGS  ?= -std=c99 -pedantic -Wall -Wextra -I/usr/include/X11/ -O3 -s -pipe
@@ -53,5 +54,8 @@ uninstall:
 	rm -f $(PREFIX)/bin/yaft
 	rm -f $(PREFIX)/bin/yaft_wall
 
-clean:
+allclean:
 	rm -f yaft yaftx mkfont_bdf glyph.h
+
+clean:
+	rm -f yaft yaftx
