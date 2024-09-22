@@ -65,7 +65,7 @@ Dprintf(const char *fmt, ...)
 
 #define DPRINTF(x...)	Dprintf(x)
 #else
-#define DPRINTF(x...)	((void)0)
+#define DPRINTF(...)	((void)0)
 #endif
 
 static inline void
