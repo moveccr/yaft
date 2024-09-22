@@ -152,6 +152,9 @@ int main()
 
 	/* init */
 	setlocale(LC_ALL, "");
+	memset(&fb, 0, sizeof(fb));
+	fb.fd = -1;
+	fatal_fb = &fb;
 	fb_init(&fb, term.color_palette);
 	term_init(&term, fb.width, fb.height);
 	tty_init(&save_tm);

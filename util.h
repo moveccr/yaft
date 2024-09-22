@@ -6,8 +6,14 @@ void error(char *str)
 	exit(EXIT_FAILURE);
 }
 
+struct framebuffer *fatal_fb;
+void fb_die(struct framebuffer *);
+
 void fatal(char *str)
 {
+	if (fatal_fb) {
+		fb_die(fatal_fb);
+	}
 	fprintf(stderr, "%s\n", str);
 	exit(EXIT_FAILURE);
 }
