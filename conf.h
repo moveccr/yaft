@@ -11,7 +11,7 @@ enum {
 enum {
 	DEBUG            = false,  /* write dump of input to stdout, debug message to stderr */
 	TABSTOP          = 8,      /* hardware tabstop */
-	LAZY_DRAW        = true,   /* don't draw when input data size is larger than BUFSIZE */
+	LAZY_DRAW        = !true,   /* don't draw when input data size is larger than BUFSIZE */
 	BACKGROUND_DRAW  = false,  /* always draw even if vt is not active */
 	//WALLPAPER        = true,  /* copy framebuffer before startup, and use it as wallpaper */
 	SUBSTITUTE_HALF  = 0x0020, /* used for missing glyph (single width): U+0020 (SPACE) */
