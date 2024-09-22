@@ -16,6 +16,36 @@ typedef unsigned long   u_long;
 #include  <dev/wscons/wsconsio.h>
 #include  <dev/wscons/wsksymdef.h>
 
+/*
+ * ROP function
+ *
+ * LUNA's frame buffer uses Hitachi HM53462 video RAM, which has raster
+ * (logic) operation, or ROP, function.  To use ROP function on LUNA, write
+ * a 32bit `mask' value to the specified address corresponding to each ROP
+ * logic.
+ *
+ * D: the data writing to the video RAM
+ * M: the data already stored on the video RAM
+ */
+
+/* operation        index   the video RAM contents will be */
+#define ROP_ZERO     0  /* all 0    */
+#define ROP_AND1     1  /* D & M    */
+#define ROP_AND2     2  /* ~D & M   */
+/* Not used on LUNA  3          */
+#define ROP_AND3     4  /* D & ~M   */
+#define ROP_THROUGH  5  /* D        */
+#define ROP_EOR      6  /* (~D & M) | (D & ~M)  */
+#define ROP_OR1      7  /* D | M    */
+#define ROP_NOR      8  /* ~D | ~M  */
+#define ROP_ENOR     9  /* (D & M) | (~D & ~M)  */
+#define ROP_INV1    10  /* ~D       */
+#define ROP_OR2     11  /* ~D | M   */
+#define ROP_INV2    12  /* ~M       */
+#define ROP_OR3     13  /* D | ~M   */
+#define ROP_NAND    14  /* ~D | ~M  */
+#define ROP_ONE     15  /* all 1    */
+
 /* some structs for OpenBSD */
 enum fbtype_t {
 	FBTYPE_RGB = 0,
@@ -41,10 +71,7 @@ struct fbinfo_t {
 };
 
 struct framebuffer {
-	uint8_t *fp;          /* pointer of framebuffer(read only) */
-	uint8_t *fp_org;      /* pointer of framebuffer(original) */
 	uint8_t *wall;        /* buffer for wallpaper */
-	uint8_t *buf;         /* copy of framebuffer */
 	int fd;               /* file descriptor of framebuffer */
 	int width, height;    /* display resolution */
 	int depth;            /* display depth */
@@ -55,6 +82,10 @@ struct framebuffer {
 	struct wsdisplay_cmap /* cmap for legacy framebuffer (8bpp pseudocolor) */
 		*cmap, *cmap_org;
 	struct fbinfo_t vinfo;
+
+	uint8_t *bmsel;
+	uint8_t *plane;
+	uint8_t *ropfn;
 };
 
 const struct fbinfo_t bpp_table[] = {
@@ -72,13 +103,51 @@ const struct fbinfo_t bpp_table[] = {
 		       .blue  = {.offset = 0,  .length = 8}},
 };
 
+static inline void *
+lunafb_mmap(int fd, uint32_t offset, size_t size)
+{
+	void *rv;
+	rv = emmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd,
+		0xb1000000U + offset);
+	if (rv == MAP_FAILED) {
+		fatal("mmap failed");
+	}
+
+	return rv;
+}
+
+static inline void
+setBMSEL(struct framebuffer *fb, int planemask)
+{
+	*(volatile uint32_t *)fb->bmsel = planemask;
+}
+
+/* set ROP to common */
+static inline void
+setROPc(struct framebuffer *fb, int rop, uint32_t mask)
+{
+	((volatile uint32_t *)(fb->ropfn))[rop] = mask;
+}
+
+/* get pointer of (round_down(x, 32),y) */
+static inline uint32_t *
+fb_ptr(struct framebuffer *fb, int x, int y)
+{
+	// LUNA has 8bytes(64pix) X scroll offset, currently.
+	uint32_t *p = (uint32_t *)(fb->plane + 8 + y * fb->line_length);
+	p += x / 32;
+	return p;
+}
+
 /* common functions */
 uint8_t *load_wallpaper(struct framebuffer *fb)
 {
 	uint8_t *ptr;
 
 	ptr = (uint8_t *) ecalloc(1, fb->screen_size);
+#if defined(FB_LUNA_UNSUPPORTED)
 	memcpy(ptr, fb->fp, fb->screen_size);
+#endif
 
 	return ptr;
 }
@@ -222,15 +291,9 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 	for (i = 0; i < COLORS; i++) /* init color palette */
 		color_palette[i] = (fb->bytes_per_pixel == 1) ? (uint32_t) i: color2pixel(&fb->vinfo, color_list[i]);
 
-	fb->fp_org = (uint8_t *) emmap(0, fb->screen_size, PROT_WRITE | PROT_READ, MAP_SHARED, fb->fd, 0);
-
-	fb->fp = fb->fp_org + 8; /* XXX: LUNA quirk; need 8 bytes offset */
-
-#if defined(FB_DIRECT)
-	fb->buf = fb->fp;
-#else
-	fb->buf   = (uint8_t *) ecalloc(1, fb->screen_size);
-#endif
+	fb->bmsel = lunafb_mmap(fb->fd,  0x40000, PAGE_SIZE);
+	fb->plane = lunafb_mmap(fb->fd,  0x80000, fb->screen_size);
+	fb->ropfn = lunafb_mmap(fb->fd, 0x2c0000, fb->screen_size);
 
 	//fb->wall  = (WALLPAPER && fb->bytes_per_pixel > 1) ? load_wallpaper(fb): NULL;
 
@@ -248,7 +311,14 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 		 * fb->screen_size is the 'whole' frame buffer memory size
 		 * without 8 bytes offset.
 		 */
-		memset(fb->fp_org, 0, fb->screen_size);
+
+		setBMSEL(fb, 0xff);
+		setROPc(fb, ROP_ZERO, 0xffffffffU);
+		uint8_t *p = (uint8_t *)fb_ptr(fb, 0, 0);
+		for (int y = 0; y < fb->height; y++) {
+			memset(p, 0, fb->width / 8);
+			p += fb->line_length;
+		}
 	}
 
 	return;
@@ -260,17 +330,44 @@ fb_init_error:
 
 void fb_die(struct framebuffer *fb)
 {
-	cmap_die(fb->cmap);
+	if (fb->bmsel) {
+		setBMSEL(fb, 0xff);
+	}
+	if (fb->ropfn) {
+		setROPc(fb, ROP_THROUGH, 0xffffffffU);
+	}
+
+	if (fb->cmap) {
+		cmap_die(fb->cmap);
+		fb->cmap = NULL;
+	}
 	if (fb->cmap_org) {
 		ioctl(fb->fd, WSDISPLAYIO_PUTCMAP, fb->cmap_org); /* not fatal */
 		cmap_die(fb->cmap_org);
+		fb->cmap_org = NULL;
 	}
-#if !defined(FB_DIRECT)
-	free(fb->buf);
-#endif
-	free(fb->wall);
-	emunmap(fb->fp_org, fb->screen_size);
-	if (ioctl(fb->fd, WSDISPLAYIO_SMODE, &(fb->mode_org)))
-		fatal("ioctl: WSDISPLAYIO_SMODE failed");
-	eclose(fb->fd);
+	if (fb->wall) {
+		free(fb->wall);
+		fb->wall = NULL;
+	}
+	if (fb->bmsel) {
+		emunmap(fb->bmsel, PAGE_SIZE);
+		fb->bmsel = NULL;
+	}
+	if (fb->plane) {
+		emunmap(fb->plane, fb->screen_size);
+		fb->plane = NULL;
+	}
+	if (fb->ropfn) {
+		emunmap(fb->ropfn, fb->screen_size);
+		fb->ropfn= NULL;
+	}
+	if (fb->fd != -1) {
+		if (ioctl(fb->fd, WSDISPLAYIO_SMODE, &(fb->mode_org))) {
+			// fatal but uncallable from here...
+			// fatal("ioctl: WSDISPLAYIO_SMODE failed");
+		}
+		eclose(fb->fd);
+		fb->fd = -1;
+	}
 }

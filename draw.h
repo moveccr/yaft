@@ -35,82 +35,180 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define	ALL1BITS	(~0U)
-#define	BLITWIDTH	(32)
-#define	ALIGNMASK	(0x1f)
-#define	BYTESDONE	(4)
 #define	PLANESIZE	0x40000
 
-static inline void draw_sixel(struct framebuffer *fb, int line, int col, uint8_t *pixmap)
+#if CELL_WIDTH > 32
+ #error "CELL_WIDTH > 32"
+#endif
+
+#if 0
+
+#include <stdarg.h>
+
+static void
+vDprintf(const char *fmt, va_list ap)
 {
-	int h, w;
-	uint32_t pixel, color = 0;
-	int i;
-	uint32_t *p0, *p;
+	FILE *fp;
+	fp = fopen("yaft.debuglog", "a+");
+	vfprintf(fp, fmt, ap);
+	fclose(fp);
+}
 
-	uint32_t prev_color;
-	uint32_t s0 = 0;
-	uint32_t y = CELL_HEIGHT * line;
+static void
+Dprintf(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	vDprintf(fmt, ap);
+	va_end(ap);
+}
 
-	memcpy(&color, pixmap, BYTES_PER_PIXEL);
-	pixel = color2pixel(&fb->vinfo, color);
-	prev_color = color;
+#define DPRINTF(x...)	Dprintf(x)
+#else
+#define DPRINTF(x...)	((void)0)
+#endif
 
-	for (h = 0; h < CELL_HEIGHT; h++, y++, s0 += BYTES_PER_PIXEL * CELL_WIDTH) {
-		uint32_t s1 = s0;
-		uint32_t x = CELL_WIDTH * col;
-		for (w = 0; w < CELL_WIDTH; w++, x++, s1 += BYTES_PER_PIXEL) {
-			uint32_t L = 1U << (31 - (x & ALIGNMASK));
+static inline void
+draw_pix(struct framebuffer *fb, int line, int col, uint8_t *pixmap)
+{
+	uint32_t h, w;
+	uint32_t color = 0;
+	uint32_t prev_color = 0;
+	uint32_t pixel = 0;
+	uint32_t x;
+	uint8_t *pp = pixmap;
+	uint32_t m, m0;
+	uint32_t *dst, *dstY;
 
-			memcpy(&color, pixmap + s1, BYTES_PER_PIXEL);
+//DPRINTF("draw_pix(*,line=%d,col=%d,pixmap=%08x)\n", line, col, pixmap);
 
-			if (color != prev_color) {
+	x = CELL_WIDTH * col;
+	m0 = 0x80000000U >> (x % 32);
+	dstY = fb_ptr(fb, x, CELL_HEIGHT * line);
+//DPRINTF("dstY=%08x\n", dstY);
+
+	for (h = 0; h < CELL_HEIGHT; h++) {
+		m = m0;
+		dst = dstY;
+
+		for (w = 0; w < CELL_WIDTH; w++) {
+			memcpy(&color, pp, BYTES_PER_PIXEL);
+			pp += BYTES_PER_PIXEL;
+			if (prev_color != color) {
 				prev_color = color;
 				pixel = color2pixel(&fb->vinfo, color);
 			}
 
-			p0 = (uint32_t *)((uint8_t *)fb->buf
-				+ y * fb->line_length + ((x / 32) * 4));
+			setBMSEL(fb, 0xff);
+			setROPc(fb, ROP_ZERO, m);
+			setBMSEL(fb, pixel);
+			setROPc(fb, ROP_ONE, m);
+			setBMSEL(fb, 0xff);
+			*(volatile uint32_t *)dst = 0;	/* any data write */
 
-			for (i = 0; i < fb->depth; i++) {
-				p = (uint32_t *)((uint8_t *)p0 + PLANESIZE * i);
-				if (pixel & (0x01 << i))
-					/* set */
-					*p |= L;
-				else
-					/* reset */
-					*p &= ~L;
+			m >>= 1;
+			if (m == 0) {
+				m = 1U << 31;
+				dst++;
 			}
 		}
+		dstY = (uint32_t *)((uint8_t *)dstY + fb->line_length);
 	}
+	//DPRINTF("exit draw_pix\n");
 }
 
-static inline void draw_glyph(uint32_t *p0, int plane, uint32_t glyph,
-	int fg, int bg, uint32_t mask)
+static inline void
+draw_char(struct framebuffer *fb,
+	uint32_t line, uint32_t col,
+	int fg, int bg, const uint16_t *bmp, int ch_width, int bdf_shift,
+	int underline)
 {
-	uint32_t glyphbg, fgpat, bgpat;
-	uint32_t *p;
+	uint32_t x, xL;
+	uint32_t h;
+	uint32_t *dst, *dst0;
+	const uint16_t *src;
+	uint32_t m;
+	uint32_t m0;
 
-	glyphbg = glyph ^ ALL1BITS;
-	fgpat = (fg & (0x01 << plane)) ? glyph : 0;
-	bgpat = (bg & (0x01 << plane)) ? glyphbg : 0;
-	p = (uint32_t *)((uint8_t *)p0 + PLANESIZE * plane);
-	*p = (*p & ~mask) | ((fgpat | bgpat) & mask);
+// DPRINTF("draw_char(*,line=%d,col=%d,fg=$%x,bg=$%x,bmp=$%08x,chw=%d,shift=%d,ul=%d)\n", line, col, fg, bg, bmp, ch_width, bdf_shift, underline);
+
+	m0 = ((1U << ch_width) - 1) << (32 - ch_width);
+
+	x = CELL_WIDTH * col;
+	dst0 = fb_ptr(fb, x, CELL_HEIGHT * line);
+// DPRINTF("dst0=%08x\n", dst0);
+
+	xL = x % 32;
+	m = m0 >> xL;
+	dst = dst0;
+
+	do {
+		src = bmp;
+
+		/* see also NetBSD omrasops.c omfb_drawchar() */
+		setBMSEL(fb, fg & bg);
+		setROPc(fb, ROP_ONE, m);
+		setBMSEL(fb, fg & ~bg);
+		setROPc(fb, ROP_THROUGH, m);
+		setBMSEL(fb, ~fg & bg);
+		setROPc(fb, ROP_INV1, m);
+		setBMSEL(fb, ~fg & ~bg);
+		setROPc(fb, ROP_ZERO, m);
+		setBMSEL(fb, 0xff);
+
+		for (h = 0; h < CELL_HEIGHT - 1; h++) {
+			uint32_t b = *src++;
+			b <<= bdf_shift;
+			b >>= xL;
+
+// DPRINTF("dst=%x\n", dst);
+			*(volatile uint32_t *)dst = b;
+			dst = (uint32_t *)((uint8_t *)dst + fb->line_length);
+		}
+		/* if UNDERLINE on, invert at bottom line */
+		{
+			uint32_t b = *src++;
+			b <<= bdf_shift;
+			b >>= xL;
+			if (underline) {
+				b = ~b;
+			}
+
+// DPRINTF("dst=%x\n", dst);
+			*(volatile uint32_t *)dst = b;
+		}
+
+		if (xL + ch_width <= 32) {
+			// DPRINTF("exit draw_char()\n");
+			return;
+		}
+
+		xL = xL + ch_width - 32;
+		bdf_shift += ch_width - xL;
+		m = m0 & ~(m0 >> xL);
+
+		xL = 0;
+		dst = dst0 + 1;
+DPRINTF("m=%08x dst=%08x\n", m, dst);
+	} while (1);
 }
 
-static inline void draw_line(struct framebuffer *fb, struct terminal *term, int line)
+uint8_t draw_modmap_0[1280/8*1024/16] = {0};
+#define DRAW_MODMAP(x, y) draw_modmap_0[(x) + (y) * 160]
+uint8_t draw_prev_blank_bg = 0;
+#define DRAW_MODMAP_CHAR 0
+#define DRAW_MODMAP_BLANK 1
+
+static inline void
+draw_line(struct framebuffer *fb, struct terminal *term, int line)
 {
-#if !defined(FB_DIRECT)
-	int pos, size;
-#endif
 	int col, glyph_width, bdf_shift;
 	struct color_pair_t color_pair;
 	struct cell_t *cellp;
 
-	int x, y, width, height, align, fg, bg, plane;
-	u_int32_t lmask, rmask, glyph;
-	u_int8_t *p;
+	int fg, bg;
 
+//DPRINTF("draw_line(*,*,%d)\n", line);
 	for (col = term->cols - 1; col >= 0; col--) {
 
 		/* target cell */
@@ -118,7 +216,8 @@ static inline void draw_line(struct framebuffer *fb, struct terminal *term, int 
 
 		/* draw sixel pixmap */
 		if (cellp->has_pixmap) {
-			draw_sixel(fb, line, col, cellp->pixmap);
+			draw_pix(fb, line, col, cellp->pixmap);
+			DRAW_MODMAP(col, line) = DRAW_MODMAP_CHAR;
 			continue;
 		}
 
@@ -126,11 +225,16 @@ static inline void draw_line(struct framebuffer *fb, struct terminal *term, int 
 		color_pair = cellp->color_pair;
 
 		/* check wide character or not */
-		if (cellp->width == NEXT_TO_WIDE)
+		if (cellp->width == NEXT_TO_WIDE) {
+			DRAW_MODMAP(col, line) = DRAW_MODMAP_CHAR;
 			continue;
+		} else if (cellp->width == HALF) {
+			glyph_width = CELL_WIDTH;
+		} else { /* WIDE */
+			glyph_width = CELL_WIDTH * 2;
+		}
 
-		glyph_width = (cellp->width == HALF) ? CELL_WIDTH: CELL_WIDTH * 2;
-		bdf_shift = 32 - my_ceil(glyph_width, BITS_PER_BYTE) * BITS_PER_BYTE;
+
 		/* check cursor positon */
 		if ((term->mode & MODE_CURSOR && line == term->cursor.y)
 			&& (col == term->cursor.x
@@ -138,83 +242,37 @@ static inline void draw_line(struct framebuffer *fb, struct terminal *term, int 
 			|| (cellp->width == NEXT_TO_WIDE && (col - 1) == term->cursor.x))) {
 			color_pair.fg = DEFAULT_BG;
 			color_pair.bg = (!tty.visible && BACKGROUND_DRAW) ? PASSIVE_CURSOR_COLOR: ACTIVE_CURSOR_COLOR;
+			DRAW_MODMAP(col, line) = DRAW_MODMAP_CHAR;
+
+		} else if (cellp->glyphp == term->glyph_map[DEFAULT_CHAR]) {
+			/* blank skip */
+			if (draw_prev_blank_bg == color_pair.bg
+			 && DRAW_MODMAP(col, line) == DRAW_MODMAP_BLANK) {
+				continue;
+			}
+			DRAW_MODMAP(col, line) = DRAW_MODMAP_BLANK;
+			// XXX 文字単位 dirty を上位で頑張るべき
+			draw_prev_blank_bg = color_pair.bg;
+		} else {
+			DRAW_MODMAP(col, line) = DRAW_MODMAP_CHAR;
 		}
+
 		/* color palette */
 		fg = term->color_palette[color_pair.fg];
 		bg = term->color_palette[color_pair.bg];
+
 #if 0	/* Not yet on LUNA */
 		if (fb->wall && color_pair.bg == DEFAULT_BG) /* wallpaper */
 			memcpy(&pixel, fb->wall + pos, fb->bytes_per_pixel);
 #endif
 
-		x = CELL_WIDTH * col;
-		y = CELL_HEIGHT * line;
-
-		p = (u_int8_t *)fb->buf + y * fb->line_length + ((x / 32) * 4);
-		align = x & ALIGNMASK;
-		width = cellp->glyphp->width * CELL_WIDTH + align;
-		lmask = ALL1BITS >> align;
-		rmask = ALL1BITS << (-width & ALIGNMASK);
-		height = 0;
-
-		if (width <= BLITWIDTH) {
-			lmask &= rmask;
-			while (height < CELL_HEIGHT) {
-				/* if UNDERLINE attribute on, swap bg/fg */
-				if ((height == (CELL_HEIGHT - 1))
-					&& (cellp->attribute & attr_mask[ATTR_UNDERLINE]))
-						bg = fg;
-				glyph = (uint32_t)cellp->glyphp->bitmap[height];
-				/* shift leftmost */
-				glyph <<= bdf_shift;
-				glyph = glyph >> align;
-
-				for (plane = 0; plane < fb->depth; plane++)
-					draw_glyph((uint32_t *)p, plane, glyph, fg, bg, lmask);
-
-				p += fb->line_length;
-				height++;
-			}
-		} else {
-			u_int8_t *q = p;
-			u_int32_t lhalf, rhalf;
-
-			while (height < CELL_HEIGHT) {
-				/* if UNDERLINE attribute on, swap bg/fg */
-				if ((height == (CELL_HEIGHT - 1))
-					&& (cellp->attribute & attr_mask[ATTR_UNDERLINE]))
-						bg = fg;
-				glyph = (uint32_t)cellp->glyphp->bitmap[height];
-				/* shift leftmost */
-				glyph <<= bdf_shift;
-				lhalf = glyph >> align;
-
-				for (plane = 0; plane < fb->depth; plane++)
-					draw_glyph((uint32_t *)p, plane, lhalf, fg, bg, lmask);
-
-				p += BYTESDONE;
-				rhalf = glyph << (BLITWIDTH - align);
-
-				for (plane = 0; plane < fb->depth; plane++)
-					draw_glyph((uint32_t *)p, plane, rhalf, fg, bg, rmask);
-
-				p = (q += fb->line_length);
-				height++;
-			}
-		}
+		bdf_shift = 32 - my_ceil(glyph_width, BITS_PER_BYTE) * BITS_PER_BYTE;
+		draw_char(fb, line, col,
+			fg, bg,
+			cellp->glyphp->bitmap,
+			glyph_width, bdf_shift,
+			cellp->attribute & attr_mask[ATTR_UNDERLINE]);
 	}
-
-#if !defined(FB_DIRECT)
-	/* actual display update (bit blit) */
-	size = fb->width / 8;
-	for (height = 0; height < CELL_HEIGHT; height++) {
-		for (plane = 0; plane < fb->depth; plane++) {
-			pos = (line * CELL_HEIGHT + height) * fb->line_length
-				+ PLANESIZE * plane;
-			memcpy(fb->fp + pos, fb->buf + pos, size);
-		}
-	}
-#endif
 
 	/* TODO: page flip
 		if fb_fix_screeninfo.ypanstep > 0, we can use hardware panning.
@@ -230,6 +288,7 @@ void refresh(struct framebuffer *fb, struct terminal *term)
 {
 	int line;
 
+//DPRINTF("refresh\n");
 	if (term->mode & MODE_CURSOR)
 		term->line_dirty[term->cursor.y] = true;
 
