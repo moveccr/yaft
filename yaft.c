@@ -179,12 +179,13 @@ int main()
 				ewrite(term.fd, buf, size);
 		}
 		if (FD_ISSET(term.fd, &fds)) {
-			size = read(term.fd, buf, BUFSIZE);
+#define XXX_BUFSIZE 256
+			size = read(term.fd, buf, XXX_BUFSIZE);
 			if (size > 0) {
 				if (DEBUG)
 					ewrite(STDOUT_FILENO, buf, size);
 				parse(&term, buf, size);
-				if (LAZY_DRAW && size == BUFSIZE)
+				if (LAZY_DRAW && size == XXX_BUFSIZE)
 					continue; /* maybe more data arrives soon */
 				refresh(&fb, &term);
 			}
