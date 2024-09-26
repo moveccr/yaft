@@ -2,8 +2,8 @@ CC ?= gcc
 #CC ?= clang
 
 #CFLAGS  ?= -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
-CFLAGS  = -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
-#CFLAGS  = -std=c99 -pedantic -Wall -Wextra -O2 -s -pipe
+#CFLAGS  = -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
+CFLAGS  = -std=c99 -O2 -s -pipe
 #CFLAGS  = -std=c99 -g -O0 -s -pipe
 LDFLAGS ?=
 
