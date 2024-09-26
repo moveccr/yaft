@@ -20,7 +20,8 @@ enum {
 };
 
 /* xterm compatible 16-color */
-#define COLOR_XTERM
+//#define COLOR_XTERM
+#define COLOR_CONSOLE
 
 /* TERM value */
 const char *term_name = "yaft-256color";
