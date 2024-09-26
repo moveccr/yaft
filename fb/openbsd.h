@@ -307,9 +307,9 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 	fb->plane = lunafb_mmap(fb->fd,  0x80000, fb->screen_size);
 	fb->ropfn = lunafb_mmap(fb->fd, 0x2c0000, fb->screen_size);
 
-DPRINTF("RFCNT at %p\n", fb->rfcnt);
+//DPRINTF("RFCNT at %p\n", fb->rfcnt);
 	setRFCNT(fb, 0);
-DPRINTF("RFCNT written\n");
+//DPRINTF("RFCNT written\n");
 
 	//fb->wall  = (WALLPAPER && fb->bytes_per_pixel > 1) ? load_wallpaper(fb): NULL;
 
