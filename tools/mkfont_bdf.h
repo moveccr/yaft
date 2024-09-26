@@ -57,6 +57,7 @@ struct glyph_t {
 struct bdf_t {
 	int bbw, bbh, bbx, bby;
 	int ascent, descent;
+	int default_dwidth;
 	int default_char;
 	int chars;
 	int pixel_size;

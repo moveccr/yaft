@@ -24,20 +24,25 @@ int bit2byte(int bits)
 
 void shift_glyph(struct bdf_t *bdf, struct bdf_glyph_t *glyph)
 {
-	int i, byte, shift;
-	uint32_t tmp;
+	int shift;
+	int i;
+	int L;
+	int width;
+	int bw, tw;
+
+	width = glyph->dwidth;
+	if (width == 0) width = bdf->default_dwidth;
+	tw = (bdf->default_dwidth > 16) ? 32 : 16;
+	bw = bit2byte(glyph->bbw) * BITS_PER_BYTE;
+	L = tw - bw;
+	L -= glyph->bbx;
+	if (L < 0) {
+		fprintf(stderr, "maybe overlapping (glyph:%X bbx:%d)\n", glyph->encoding, glyph->bbx);
+		L = 0;
+	}
 
 	for (i = 0; i < glyph->bbh; i++) {
-		tmp = glyph->bitmap[i];
-		byte = bit2byte(glyph->bbw);
-		tmp <<= (bit2byte(glyph->dwidth) - byte) * BITS_PER_BYTE;
-		if (glyph->bbx >= 0)
-			tmp >>= glyph->bbx;
-		else {
-			fprintf(stderr, "maybe overlapping (glpyh:%X bbx:%d)\n", glyph->encoding, glyph->bbx);
-			tmp <<= abs(glyph->bbx);
-		}
-		glyph->bitmap[i] = tmp;
+		glyph->bitmap[i] <<= L;
 	}
 
 	shift = bdf->ascent - (glyph->bbh + glyph->bby);
@@ -90,6 +95,8 @@ int read_header(char *buf, struct bdf_t *bdf)
 		bdf->ascent = atoi(buf + strlen("FONT_ASCENT "));
 	else if (pre_match(buf, "FONT_DESCENT "))
 		bdf->descent = atoi(buf + strlen("FONT_DESCENT "));
+	else if (pre_match(buf, "DWIDTH"))
+		bdf->default_dwidth = atoi(buf + strlen("DWIDTH "));
 	else if (pre_match(buf, "DEFAULT_CHAR "))
 		bdf->default_char = atoi(buf + strlen("DEFAULT_CHAR "));
 	else if (pre_match(buf, "PIXEL_SIZE "))
@@ -148,11 +155,17 @@ int read_bitmap(struct glyph_t *fonts, char *buf, struct bdf_t *bdf, struct bdf_
 		shift_glyph(bdf, glyph);
 		count = 0;
 
+		if (glyph->encoding < 0) {
+			goto ignore_char;
+		}
+
 		code = convert_table[glyph->encoding];
 		width = glyph->dwidth;
+		if (width == 0) width = bdf->default_dwidth;
 		height = bdf->ascent + bdf->descent;
 
-		//fprintf(stderr, "code:%d width:%d height:%d\n", code, width, height);
+		if (code == 12288)
+			fprintf(stderr, "code:%d width:%d height:%d\n", code, width, height);
 
 		if (code < UCS2_CHARS) {
 			fonts[code].width = width;
@@ -162,6 +175,7 @@ int read_bitmap(struct glyph_t *fonts, char *buf, struct bdf_t *bdf, struct bdf_
 			for (i = 0; i < fonts[code].height; i++)
 				fonts[code].bitmap[i] = glyph->bitmap[i];
 		}
+ ignore_char:
 		memset(glyph, 0, sizeof(struct bdf_glyph_t));
 		return BDF_CHAR;
 	}

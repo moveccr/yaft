@@ -26,16 +26,20 @@ yaftx: mkfont_bdf
 mkfont_bdf: tools/mkfont_bdf.c tools/font.h tools/bdf.h
 	$(CC) -o $@ $< $(CFLAGS) $(LDFLAGS)
 
-glyph.h: mkfont_bdf
+glyph.c: mkfont_bdf
 	# If you want to use your favorite fonts, please change following line
 	# usage: mkfont_bdf ALIAS BDF1 BDF2 BDF3... > glyph.h
 	# ALIAS: glyph substitution rule file (see table/alias for more detail)
 	# BDF1 BDF2 BDF3...: monospace bdf files (must be the same size)
-	./mkfont_bdf table/alias fonts/milkjf_k16.bdf fonts/milkjf_8x16r.bdf fonts/milkjf_8x16.bdf > glyph.h
+	./mkfont_bdf table/alias fonts/KH-Dot-Hibiya-24.bdf
+#	./mkfont_bdf table/alias fonts/milkjf_8x16.bdf fonts/milkjf_8x16r.bdf fonts/milkjf_k16.bdf
 
-yaft: yaft.c $(HDR)
+glyph.o: glyph.c glyph.h
+	$(CC) -o $@ -c $< $(CFLAGS) $(LDFLAGS)
+
+yaft: yaft.c $(HDR) glyph.o
 	# If you want to change configuration, please modify conf.h before make (see conf.h for more detail)
-	$(CC) -o $@ $< $(CFLAGS) $(LDFLAGS)
+	$(CC) -o $@ $< $(CFLAGS) $(LDFLAGS) glyph.o
 
 yaftx: x/yaftx.c $(HDR)
 	# If you want to change configuration, please modify conf.h before make (see conf.h for more detail)
@@ -55,7 +59,7 @@ uninstall:
 	rm -f $(PREFIX)/bin/yaft_wall
 
 allclean:
-	rm -f yaft yaftx mkfont_bdf glyph.h
+	rm -f yaft yaftx mkfont_bdf glyph.h glyph.c *.o
 
 clean:
 	rm -f yaft yaftx

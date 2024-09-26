@@ -120,13 +120,13 @@ draw_pix(struct framebuffer *fb, int line, int col, uint8_t *pixmap)
 static inline void
 draw_char(struct framebuffer *fb,
 	uint32_t line, uint32_t col,
-	int fg, int bg, const uint16_t *bmp, int ch_width, int bdf_shift,
+	int fg, int bg, const glyphbitmap_t *bmp, int ch_width, int bdf_shift,
 	int underline)
 {
 	uint32_t x, xL;
 	uint32_t h;
 	uint32_t *dst, *dst0;
-	const uint16_t *src;
+	const glyphbitmap_t *src;
 	uint32_t m;
 	uint32_t m0;
 
@@ -189,7 +189,7 @@ draw_char(struct framebuffer *fb,
 
 		xL = 0;
 		dst = dst0 + 1;
-DPRINTF("m=%08x dst=%08x\n", m, dst);
+//DPRINTF("m=%08x dst=%08x\n", m, dst);
 	} while (1);
 }
 
@@ -266,12 +266,12 @@ draw_line(struct framebuffer *fb, struct terminal *term, int line)
 			memcpy(&pixel, fb->wall + pos, fb->bytes_per_pixel);
 #endif
 
-		bdf_shift = 32 - my_ceil(glyph_width, BITS_PER_BYTE) * BITS_PER_BYTE;
+		bdf_shift = 32 - sizeof(glyphbitmap_t) * 8;
 		draw_char(fb, line, col,
 			fg, bg,
 			cellp->glyphp->bitmap,
 			glyph_width, bdf_shift,
-			cellp->attribute & attr_mask[ATTR_UNDERLINE]);
+			(int)(cellp->attribute & attr_mask[ATTR_UNDERLINE]));
 	}
 
 	/* TODO: page flip
