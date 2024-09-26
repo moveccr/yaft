@@ -14,6 +14,7 @@
 #endif
 
 #include "draw.h"
+#include "stopwatch.h"
 #include "terminal.h"
 #include "function.h"
 #include "osc.h"
@@ -172,14 +173,14 @@ int main()
 			tty.redraw_flag = false;
 		}
 
+#define XXX_BUFSIZE	BUFSIZE
 		check_fds(&fds, &tv, STDIN_FILENO, term.fd);
 		if (FD_ISSET(STDIN_FILENO, &fds)) {
-			size = read(STDIN_FILENO, buf, BUFSIZE);
+			size = read(STDIN_FILENO, buf, XXX_BUFSIZE);
 			if (size > 0)
 				ewrite(term.fd, buf, size);
 		}
 		if (FD_ISSET(term.fd, &fds)) {
-#define XXX_BUFSIZE 256
 			size = read(term.fd, buf, XXX_BUFSIZE);
 			if (size > 0) {
 				if (DEBUG)
