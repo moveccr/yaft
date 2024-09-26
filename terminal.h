@@ -90,8 +90,16 @@ void scroll(struct terminal *term, int from, int to, int offset)
 		/* scroll down:
 			cells[from] ... cells[from + scroll_lines - 1]: copy from cells[i + offset]
 			cells[from + scroll_lines] ... cells[to]      : erase */
+#if 0
 		for (i = from; i < from + scroll_lines; i++)
 			memmove(term->cells[i], term->cells[i + offset], size);
+#else
+		void *tmp = term->cells[from];
+		for (i = from; i < from + scroll_lines; i++) {
+			term->cells[i] = term->cells[i + offset];
+		}
+		term->cells[i] = tmp;
+#endif
 
 		for (i = from + scroll_lines; i <= to; i++)
 			for (j = 0; j < term->cols; j++)
