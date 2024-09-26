@@ -10,7 +10,7 @@ void erase_cell(struct terminal *term, int y, int x)
 	cellp->width      = HALF;
 	cellp->has_pixmap = false;
 
-	term->line_dirty[y] = true;
+	term->rows[y].drawreq = DRAWREQ_YES;
 }
 
 void copy_cell(struct terminal *term, int dst_y, int dst_x, int src_y, int src_x)
@@ -30,7 +30,7 @@ void copy_cell(struct terminal *term, int dst_y, int dst_x, int src_y, int src_x
 			*(dst + 1) = *src;
 			(dst + 1)->width = NEXT_TO_WIDE;
 		}
-		term->line_dirty[dst_y] = true;
+		term->rows[dst_y].drawreq = DRAWREQ_YES;
 	}
 }
 
@@ -58,7 +58,7 @@ int set_cell(struct terminal *term, int y, int x, const struct glyph_t *glyphp)
 
 	cellp    = &term->cells[y][x];
 	*cellp   = cell;
-	term->line_dirty[y] = true;
+	term->rows[y].drawreq = DRAWREQ_YES;
 
 	if (cell.width == WIDE && x + 1 < term->cols) {
 		cellp        = &term->cells[y][x + 1];
@@ -79,8 +79,6 @@ void scroll(struct terminal *term, int from, int to, int offset)
 	if (DEBUG)
 		fprintf(stderr, "scroll from:%d to:%d offset:%d\n", from, to, offset);
 
-	for (i = from; i <= to; i++)
-		term->line_dirty[i] = true;
 
 	size = sizeof(struct cell_t) * term->cols;
 	abs_offset = abs(offset);
@@ -100,10 +98,17 @@ void scroll(struct terminal *term, int from, int to, int offset)
 		}
 		term->cells[i] = tmp;
 #endif
+		for (i = from; i < from + scroll_lines; i++) {
+			term->rows[i] = term->rows[i + offset];
+			if (term->rows[i].drawreq == DRAWREQ_NO) {
+				term->rows[i].drawreq = DRAWREQ_SCROLL;
+			}
+		}
 
 		for (i = from + scroll_lines; i <= to; i++)
 			for (j = 0; j < term->cols; j++)
 				erase_cell(term, i, j);
+
 	} else {
 		/* scroll up:
 			cells[from + abs_offset] ... cells[to]      : copy from cells[i - offset]
@@ -115,12 +120,16 @@ void scroll(struct terminal *term, int from, int to, int offset)
 			for (j = 0; j < term->cols; j++)
 				erase_cell(term, i, j);
 	}
+
+	draw_scroll(term, from, to, offset);
 }
 
 /* relative movement: cause scrolling */
 void move_cursor(struct terminal *term, int y_offset, int x_offset)
 {
 	int x, y, top, bottom;
+
+	term->rows[term->cursor.y].drawreq = DRAWREQ_YES;
 
 	x = term->cursor.x + x_offset;
 	y = term->cursor.y + y_offset;
@@ -148,6 +157,7 @@ void move_cursor(struct terminal *term, int y_offset, int x_offset)
 		scroll(term, top, bottom, y_offset);
 	}
 	term->cursor.y = y;
+	term->rows[term->cursor.y].drawreq = DRAWREQ_YES;
 }
 
 /* absolute movement: never scroll */
@@ -168,7 +178,9 @@ void set_cursor(struct terminal *term, int y, int x)
 	y = (y < top) ? top: (y > bottom) ? bottom: y;
 
 	term->cursor.x = x;
+	term->rows[term->cursor.y].drawreq = DRAWREQ_YES;
 	term->cursor.y = y;
+	term->rows[term->cursor.y].drawreq = DRAWREQ_YES;
 	term->wrap_occured = false;
 }
 
@@ -330,7 +342,7 @@ void reset(struct terminal *term)
 			else
 				term->tabstop[j] = false;
 		}
-		term->line_dirty[i] = true;
+		term->rows[i].drawreq = DRAWREQ_YES;
 	}
 
 	reset_esc(term);
@@ -342,7 +354,7 @@ void redraw(struct terminal *term)
 	int i;
 
 	for (i = 0; i < term->lines; i++)
-		term->line_dirty[i] = true;
+		term->rows[i].drawreq = DRAWREQ_YES;
 }
 
 void term_init(struct terminal *term, int width, int height)
@@ -360,7 +372,7 @@ void term_init(struct terminal *term, int width, int height)
 		fprintf(stderr, "width:%d height:%d cols:%d lines:%d\n",
 			width, height, term->cols, term->lines);
 
-	term->line_dirty = (bool *) ecalloc(term->lines, sizeof(bool));
+	term->rows = (struct row_t *) ecalloc(term->lines, sizeof(struct row_t));
 	term->tabstop    = (bool *) ecalloc(term->cols, sizeof(bool));
 
 	term->cells      = (struct cell_t **) ecalloc(term->lines, sizeof(struct cell_t *));
@@ -400,7 +412,7 @@ void term_die(struct terminal *term)
 {
 	int i;
 
-	free(term->line_dirty);
+	free(term->rows);
 	free(term->tabstop);
 	free(term->esc.buf);
 

@@ -37,36 +37,36 @@
 
 #define	PLANESIZE	0x40000
 
+static struct framebuffer *gFB;
+static uint32_t draw_scroll_y;
+
 #if CELL_WIDTH > 32
  #error "CELL_WIDTH > 32"
 #endif
 
-#if 0
-
-#include <stdarg.h>
-
-static void
-vDprintf(const char *fmt, va_list ap)
+static inline uint32_t
+ROL(uint32_t v, uint32_t n)
 {
-	FILE *fp;
-	fp = fopen("yaft.debuglog", "a+");
-	vfprintf(fp, fmt, ap);
-	fclose(fp);
+	return (v << n) | (v >> (32 - n));
 }
 
-static void
-Dprintf(const char *fmt, ...)
+static inline uint32_t
+ROR(uint32_t v, uint32_t n)
 {
-	va_list ap;
-	va_start(ap, fmt);
-	vDprintf(fmt, ap);
-	va_end(ap);
+	return (v >> n) | (v << (32 - n));
 }
 
-#define DPRINTF(...)	Dprintf(__VA_ARGS__)
-#else
-#define DPRINTF(...)	((void)0)
-#endif
+static inline uint8_t*
+next_raster_ptr(struct framebuffer *fb, void *p)
+{
+	uint32_t a;
+	a = (uint32_t)p - (uint32_t)(fb->plane);
+	a += 0x100;
+	a &= 0x3FFFF;
+	a += (uint32_t)(fb->plane);
+//DPRINTF("p=%08x a=%08x\n", (uint32_t)p, a);
+	return (uint8_t *)a;
+}
 
 static inline void
 draw_pix(struct framebuffer *fb, int line, int col, uint8_t *pixmap)
@@ -84,7 +84,7 @@ draw_pix(struct framebuffer *fb, int line, int col, uint8_t *pixmap)
 
 	x = CELL_WIDTH * col;
 	m0 = 0x80000000U >> (x % 32);
-	dstY = fb_ptr(fb, x, CELL_HEIGHT * line);
+	dstY = fb_ptr(fb, x, CELL_HEIGHT * line + draw_scroll_y);
 //DPRINTF("dstY=%08x\n", dstY);
 
 	for (h = 0; h < CELL_HEIGHT; h++) {
@@ -112,7 +112,7 @@ draw_pix(struct framebuffer *fb, int line, int col, uint8_t *pixmap)
 				dst++;
 			}
 		}
-		dstY = (uint32_t *)((uint8_t *)dstY + fb->line_length);
+		dstY = (uint32_t *)next_raster_ptr(fb, dstY);
 	}
 	//DPRINTF("exit draw_pix\n");
 }
@@ -130,12 +130,12 @@ draw_char(struct framebuffer *fb,
 	uint32_t m;
 	uint32_t m0;
 
-// DPRINTF("draw_char(*,line=%d,col=%d,fg=$%x,bg=$%x,bmp=$%08x,chw=%d,shift=%d,ul=%d)\n", line, col, fg, bg, bmp, ch_width, bdf_shift, underline);
+//DPRINTF("draw_char(*,line=%d,col=%d,fg=$%x,bg=$%x,bmp=$%08x,chw=%d,shift=%d,ul=%d)\n", line, col, fg, bg, bmp, ch_width, bdf_shift, underline);
 
 	m0 = ((1U << ch_width) - 1) << (32 - ch_width);
 
 	x = CELL_WIDTH * col;
-	dst0 = fb_ptr(fb, x, CELL_HEIGHT * line);
+	dst0 = fb_ptr(fb, x, CELL_HEIGHT * line + draw_scroll_y);
 // DPRINTF("dst0=%08x\n", dst0);
 
 	xL = x % 32;
@@ -163,7 +163,7 @@ draw_char(struct framebuffer *fb,
 
 // DPRINTF("dst=%x\n", dst);
 			*(volatile uint32_t *)dst = b;
-			dst = (uint32_t *)((uint8_t *)dst + fb->line_length);
+			dst = (uint32_t *)next_raster_ptr(fb, dst);
 		}
 		/* if UNDERLINE on, invert at bottom line */
 		{
@@ -207,8 +207,12 @@ draw_line(struct framebuffer *fb, struct terminal *term, int line)
 	struct cell_t *cellp;
 
 	int fg, bg;
+	bool is_cursorline;
 
 //DPRINTF("draw_line(*,*,%d)\n", line);
+	
+	is_cursorline = (term->mode & MODE_CURSOR && line == term->cursor.y);
+
 	for (col = term->cols - 1; col >= 0; col--) {
 
 		/* target cell */
@@ -236,7 +240,7 @@ draw_line(struct framebuffer *fb, struct terminal *term, int line)
 
 
 		/* check cursor positon */
-		if ((term->mode & MODE_CURSOR && line == term->cursor.y)
+		if (is_cursorline
 			&& (col == term->cursor.x
 			|| (cellp->width == WIDE && (col + 1) == term->cursor.x)
 			|| (cellp->width == NEXT_TO_WIDE && (col - 1) == term->cursor.x))) {
@@ -248,7 +252,8 @@ draw_line(struct framebuffer *fb, struct terminal *term, int line)
 			/* blank skip */
 			if (draw_prev_blank_bg == color_pair.bg
 			 && DRAW_MODMAP(col, line) == DRAW_MODMAP_BLANK) {
-				continue;
+				// XXX MODMAP はもう不要?
+				//continue;
 			}
 			DRAW_MODMAP(col, line) = DRAW_MODMAP_BLANK;
 			// XXX 文字単位 dirty を上位で頑張るべき
@@ -281,19 +286,67 @@ draw_line(struct framebuffer *fb, struct terminal *term, int line)
 		(maybe we can use this by using libdrm) */
 	/* TODO: vertical synchronizing */
 
-	term->line_dirty[line] = ((term->mode & MODE_CURSOR) && term->cursor.y == line) ? true: false;
+	term->rows[line].drawreq = is_cursorline ?  DRAWREQ_YES : DRAWREQ_NO;
 }
+
 
 void refresh(struct framebuffer *fb, struct terminal *term)
 {
 	int line;
 
-//DPRINTF("refresh\n");
-	if (term->mode & MODE_CURSOR)
-		term->line_dirty[term->cursor.y] = true;
+	gFB = fb;
 
-	for (line = 0; line < term->lines; line++) {
-		if (term->line_dirty[line])
-			draw_line(fb, term, line);
+//DPRINTF("refresh\n");
+	if (term->mode & MODE_CURSOR) {
+		term->rows[term->cursor.y].drawreq = DRAWREQ_YES;
 	}
+//DPRINTF("refresh B\n");
+	for (line = 0; line < term->lines; line++) {
+		// ここでは SCROLL も描画対象
+//DPRINTF("[%d].drawreq=%d\n", line, term->rows[line].drawreq);
+		if (term->rows[line].drawreq != DRAWREQ_NO) {
+//DPRINTF("refresh C\n");
+			draw_line(fb, term, line);
+		}
+	}
+//DPRINTF("refresh D\n");
+}
+
+void
+draw_scroll(struct terminal *term, int from, int to, int offset)
+{
+	struct framebuffer *fb = gFB;
+	int i;
+//DPRINTF("draw_scroll(*,from=%d,to=%d,offset=%d)\n", from, to, offset);
+
+	if (fb == NULL) {
+//DPRINTF("fb=NULL\n");
+		return;
+	}
+	if (from != 0) {
+		return;
+	}
+	if (offset <= 0) {
+		return;
+	}
+
+	setBMSEL(fb, 0xff);
+	setROPc(fb, ROP_ZERO, 0xffffffffU);
+	uint8_t *p = (uint8_t *)fb_ptr(fb, 0, draw_scroll_y);
+	for (i = 0; i < offset * CELL_HEIGHT; i++) {
+		memset(p, 0, fb->width / 8);
+		p = next_raster_ptr(fb, p);
+	}
+
+	draw_scroll_y += offset * CELL_HEIGHT;
+	draw_scroll_y &= 0x3ff;
+
+	for (i = 0; i < term->lines; i++) {
+		if (term->rows[i].drawreq == DRAWREQ_SCROLL) {
+			term->rows[i].drawreq = DRAWREQ_NO;
+		}
+	}
+
+	setRFCNT(fb, draw_scroll_y);
+//DPRINTF("draw_scroll_y=%u\n", draw_scroll_y);
 }

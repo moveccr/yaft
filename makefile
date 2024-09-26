@@ -3,8 +3,8 @@ CC ?= gcc
 
 #CFLAGS  ?= -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
 #CFLAGS  = -std=c99 -pedantic -Wall -Wextra -O3 -s -pipe
-CFLAGS  = -std=c99 -O2 -s -pipe
-#CFLAGS  = -std=c99 -g -O0 -s -pipe
+CFLAGS  = -std=c99 -O2 -pipe
+#CFLAGS  = -std=c99 -g -O0 -pipe
 LDFLAGS ?=
 
 XCFLAGS  ?= -std=c99 -pedantic -Wall -Wextra -I/usr/include/X11/ -O3 -s -pipe
@@ -32,7 +32,7 @@ glyph.c: mkfont_bdf
 	# ALIAS: glyph substitution rule file (see table/alias for more detail)
 	# BDF1 BDF2 BDF3...: monospace bdf files (must be the same size)
 	./mkfont_bdf table/alias fonts/KH-Dot-Hibiya-24.bdf
-#	./mkfont_bdf table/alias fonts/milkjf_8x16.bdf fonts/milkjf_8x16r.bdf fonts/milkjf_k16.bdf
+#./mkfont_bdf table/alias fonts/milkjf_8x16.bdf fonts/milkjf_8x16r.bdf fonts/milkjf_k16.bdf
 
 glyph.o: glyph.c glyph.h
 	$(CC) -o $@ -c $< $(CFLAGS) $(LDFLAGS)

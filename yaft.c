@@ -1,7 +1,11 @@
 /* See LICENSE for licence details. */
+
 #include "yaft.h"
 #include "conf.h"
 #include "util.h"
+
+//#define USE_DPRINTF
+#include "dprintf.h"
 
 #if defined(__linux__)
 	#include "fb/linux.h"

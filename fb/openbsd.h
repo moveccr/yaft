@@ -83,6 +83,7 @@ struct framebuffer {
 		*cmap, *cmap_org;
 	struct fbinfo_t vinfo;
 
+	uint8_t *rfcnt;
 	uint8_t *bmsel;
 	uint8_t *plane;
 	uint8_t *ropfn;
@@ -117,6 +118,16 @@ lunafb_mmap(int fd, uint32_t offset, size_t size)
 }
 
 static inline void
+setRFCNT(struct framebuffer *fb, int y)
+{
+	// 7, -27 がデフォルト位置
+	y += -27;
+	y &= 0x3ff;
+	y |= 0x00070000;
+	*(volatile uint32_t *)fb->rfcnt = (uint32_t)y;
+}
+
+static inline void
 setBMSEL(struct framebuffer *fb, int planemask)
 {
 	*(volatile uint32_t *)fb->bmsel = planemask;
@@ -134,7 +145,7 @@ static inline uint32_t *
 fb_ptr(struct framebuffer *fb, int x, int y)
 {
 	// LUNA has 8bytes(64pix) X scroll offset, currently.
-	uint32_t *p = (uint32_t *)(fb->plane + 8 + y * fb->line_length);
+	uint32_t *p = (uint32_t *)(fb->plane + 8 + (y & 0x3ff) * fb->line_length);
 	p += x / 32;
 	return p;
 }
@@ -291,9 +302,14 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 	for (i = 0; i < COLORS; i++) /* init color palette */
 		color_palette[i] = (fb->bytes_per_pixel == 1) ? (uint32_t) i: color2pixel(&fb->vinfo, color_list[i]);
 
+	fb->rfcnt = lunafb_mmap(fb->fd,  0x00000, PAGE_SIZE);
 	fb->bmsel = lunafb_mmap(fb->fd,  0x40000, PAGE_SIZE);
 	fb->plane = lunafb_mmap(fb->fd,  0x80000, fb->screen_size);
 	fb->ropfn = lunafb_mmap(fb->fd, 0x2c0000, fb->screen_size);
+
+DPRINTF("RFCNT at %p\n", fb->rfcnt);
+	setRFCNT(fb, 0);
+DPRINTF("RFCNT written\n");
 
 	//fb->wall  = (WALLPAPER && fb->bytes_per_pixel > 1) ? load_wallpaper(fb): NULL;
 
@@ -330,6 +346,9 @@ fb_init_error:
 
 void fb_die(struct framebuffer *fb)
 {
+	if (fb->rfcnt) {
+		setRFCNT(fb, 0);
+	}
 	if (fb->bmsel) {
 		setBMSEL(fb, 0xff);
 	}
@@ -350,6 +369,11 @@ void fb_die(struct framebuffer *fb)
 		free(fb->wall);
 		fb->wall = NULL;
 	}
+	if (fb->rfcnt) {
+		emunmap(fb->rfcnt, PAGE_SIZE);
+		fb->rfcnt = NULL;
+	}
+
 	if (fb->bmsel) {
 		emunmap(fb->bmsel, PAGE_SIZE);
 		fb->bmsel = NULL;

@@ -131,6 +131,14 @@ struct state_t {   /* for save, restore state */
 	enum char_attr attribute;
 };
 
+struct row_t {
+	int32_t drawreq;		/* 描画リクエスト */
+#define DRAWREQ_YES		0
+#define DRAWREQ_SCROLL	1
+#define DRAWREQ_NO		2
+	/* セルとは直接リンクしていない。どっちがいいかは考えもの */
+};
+
 struct sixel_canvas_t {
 	uint8_t *pixmap;
 	struct point_t point;
@@ -147,7 +155,7 @@ struct terminal {
 	struct cell_t **cells;                       /* pointer to each cell: cells[lines][cols] */
 	struct margin scroll;                        /* scroll margin */
 	struct point_t cursor;                       /* cursor pos (x, y) */
-	bool *line_dirty;                            /* dirty flag */
+	struct row_t *rows;
 	bool *tabstop;                               /* tabstop flag */
 	enum term_mode mode;                         /* for set/reset mode */
 	bool wrap_occured;                           /* whether auto wrap occured or not */
