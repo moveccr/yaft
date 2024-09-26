@@ -63,7 +63,7 @@ Dprintf(const char *fmt, ...)
 	va_end(ap);
 }
 
-#define DPRINTF(x...)	Dprintf(x)
+#define DPRINTF(...)	Dprintf(__VA_ARGS__)
 #else
 #define DPRINTF(...)	((void)0)
 #endif
