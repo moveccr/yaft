@@ -217,7 +217,22 @@ void cmap_init(struct framebuffer *fb)
 	cmap_update(fb->fd, fb->cmap);
 }
 
-static inline uint32_t color2pixel(struct fbinfo_t *vinfo, uint32_t color)
+static inline uint8_t
+cc2idx(uint8_t c)
+{
+	if (c < 0x73) {
+		if (c < 0x2f) {
+			c = 0;
+		} else {
+			c = 1;
+		}
+	} else {
+		c = 2 + (c - 0x73) / 0x28;
+	}
+	return c;
+}
+
+static inline uint32_t color2pixel(struct framebuffer *fb, uint32_t color)
 {
 	uint32_t r, g, b;
 
@@ -226,7 +241,8 @@ static inline uint32_t color2pixel(struct fbinfo_t *vinfo, uint32_t color)
 	b = bit_mask[8] & (color >> 0);
 
 	/* pseudo color */
-	if (vinfo->fbtype == FBTYPE_INDEX) {
+	if (fb->vinfo.fbtype == FBTYPE_INDEX) {
+#if 0
 		if (r == g && r == b) { /* 24 gray scale */
 			r = 24 * r / COLORS;
 			return 232 + r;
@@ -234,17 +250,22 @@ static inline uint32_t color2pixel(struct fbinfo_t *vinfo, uint32_t color)
 		r = 6 * r / COLORS;
 		g = 6 * g / COLORS;
 		b = 6 * b / COLORS;
+#else
+		r = cc2idx(r);
+		g = cc2idx(g);
+		b = cc2idx(b);
+#endif
 		return 16 + (r * 36) + (g * 6) + b;
 	}
 
 	/* direct color */
-	r = r >> (BITS_PER_BYTE - vinfo->red.length);
-	g = g >> (BITS_PER_BYTE - vinfo->green.length);
-	b = b >> (BITS_PER_BYTE - vinfo->blue.length);
+	r = r >> (BITS_PER_BYTE - fb->vinfo.red.length);
+	g = g >> (BITS_PER_BYTE - fb->vinfo.green.length);
+	b = b >> (BITS_PER_BYTE - fb->vinfo.blue.length);
 
-	return (r << vinfo->red.offset)
-		+ (g << vinfo->green.offset)
-		+ (b << vinfo->blue.offset);
+	return (r << fb->vinfo.red.offset)
+		+ (g << fb->vinfo.green.offset)
+		+ (b << fb->vinfo.blue.offset);
 }
 
 void fb_init(struct framebuffer *fb, uint32_t *color_palette)
@@ -300,7 +321,7 @@ void fb_init(struct framebuffer *fb, uint32_t *color_palette)
 		fatal("unsupported framebuffer type");
 
 	for (i = 0; i < COLORS; i++) /* init color palette */
-		color_palette[i] = (fb->bytes_per_pixel == 1) ? (uint32_t) i: color2pixel(&fb->vinfo, color_list[i]);
+		color_palette[i] = (fb->bytes_per_pixel == 1) ? (uint32_t) i: color2pixel(fb, color_list[i]);
 
 	fb->rfcnt = lunafb_mmap(fb->fd,  0x00000, PAGE_SIZE);
 	fb->bmsel = lunafb_mmap(fb->fd,  0x40000, PAGE_SIZE);

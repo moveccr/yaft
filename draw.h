@@ -72,9 +72,7 @@ static inline void
 draw_pix(struct framebuffer *fb, int line, int col, uint8_t *pixmap)
 {
 	uint32_t h, w;
-	uint32_t color = 0;
-	uint32_t prev_color = 0;
-	uint32_t pixel = 0;
+	uint8_t color = 0;
 	uint32_t x;
 	uint8_t *pp = pixmap;
 	uint32_t m, m0;
@@ -92,16 +90,11 @@ draw_pix(struct framebuffer *fb, int line, int col, uint8_t *pixmap)
 		dst = dstY;
 
 		for (w = 0; w < CELL_WIDTH; w++) {
-			memcpy(&color, pp, BYTES_PER_PIXEL);
-			pp += BYTES_PER_PIXEL;
-			if (prev_color != color) {
-				prev_color = color;
-				pixel = color2pixel(&fb->vinfo, color);
-			}
+			color = *pp++;
 
 			setBMSEL(fb, 0xff);
 			setROPc(fb, ROP_ZERO, m);
-			setBMSEL(fb, pixel);
+			setBMSEL(fb, color);
 			setROPc(fb, ROP_ONE, m);
 			setBMSEL(fb, 0xff);
 			*(volatile uint32_t *)dst = 0;	/* any data write */

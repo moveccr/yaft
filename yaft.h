@@ -35,7 +35,6 @@ enum char_code {
 enum misc {
 	BUFSIZE           = 1024,    /* read, esc, various buffer size */
 	BITS_PER_BYTE     = 8,
-	BYTES_PER_PIXEL   = 4,       /* pixel size of sixel pixmap data */
 	BITS_PER_SIXEL    = 6,       /* number of bits of a sixel */
 	ESCSEQ_SIZE       = 1024,    /* limit size of terminal escape sequence */
 	SELECT_TIMEOUT    = 15000,   /* used by select() */
@@ -109,7 +108,7 @@ struct cell_t {
 	bool has_pixmap;                /* has sixel pixmap data or not */
 	/*	sixel pixmap data:
 		must be statically allocated for copy_cell() */
-	uint8_t pixmap[BYTES_PER_PIXEL * CELL_WIDTH * CELL_HEIGHT];
+	uint8_t pixmap[1 * CELL_WIDTH * CELL_HEIGHT];
 };
 
 struct esc_t {
@@ -140,8 +139,9 @@ struct row_t {
 };
 
 struct sixel_canvas_t {
-	uint8_t *pixmap;
+	uint8_t *pixmap;		/* indexed color */
 	struct point_t point;
+	int mode;
 	int width, height;
 	int line_length;
 	uint8_t color_index;

@@ -403,7 +403,7 @@ void term_init(struct terminal *term, int width, int height)
 		term->drcs[i] = NULL;
 
 	/* allocate sixel buffer */
-	term->sixel.pixmap = (uint8_t *) ecalloc(width * height, BYTES_PER_PIXEL);
+	term->sixel.pixmap = (uint8_t *) ecalloc(width * height, 1);
 
 	reset(term);
 }
